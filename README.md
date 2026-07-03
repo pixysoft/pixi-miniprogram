@@ -1,5 +1,13 @@
 #pixijs 小程序 WebGL 的适配版本。
 ---
+  - 2026.7.03 **v2.0.0**：新增 framework 游戏框架层（分支 feature/fable5_dev_2.0）。产物同为单文件 `dist/pixi.miniprogram.js`，新导出 `framework` 与 `createGame`：
+    - app：App 主循环（tick 优先级 / maxDt / Timer / actions 接管）、createGame 一步装配
+    - scene：SceneManager（场景栈 + transition 钩子）、EventBus（快照分发）
+    - assets：AssetManager（TexturePacker 图集 / 手写切片 / 资源组 / 帧名索引 / 九宫格元数据）、TextureCache（程序化纹理缓存）
+    - ui：Theme 皮肤主题（JSON 换皮，缺帧自动回退程序化纹理）、Button 三态、ScrollView（惯性/回弹/子控件拦截，参数移植 cocos/egret）、List 虚拟化、Slider、ProgressBar、Modal、Toast、legacy 旧 widgets 兼容层
+    - action：sequence/spawn/repeat/ease 组合式动作；data：Store/Gateway/Rng
+    - 用法：`const { createGame, framework } = require('libs/pixi.miniprogram.js')`，示例见 `example/pages/framework/`；冒烟测试 `npm test`
+---
   - 2021.1.11 修复graphics在新版微信内不正常显示的bug
   - 2021.1.14 改写PIXI.Text和PIXI.Graphics的渲染逻辑，需要在wxml文件中添加两个type 2d的canvas，然后把canvas传入PIXI中。其中一个用于Graphics渲染，一个用于Text渲染，传入参数示例：PIXI = createPIXI(canvas,stageWidth,canvas2d,canvas2dText)
   - 2021.3.25 添加遮罩实现示例

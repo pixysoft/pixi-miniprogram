@@ -1,0 +1,154 @@
+/**
+ * AssetManager — 图集/资源组管理（借鉴 Egret RES：组加载 + 帧名全局索引）
+ *
+ * 图集格式：TexturePacker JSON Hash
+ *   { frames: { 帧名: { frame: {x,y,w,h}, slice?: [l,t,r,b] } }, meta: { image } }
+ * 兼容手写切片（收编 UW Assets.js 模式）：addSheet(key, imageUrl, defs)
+ *   defs: { 帧名: { x, y, w, h, slice? } }
+ *
+ * create(PIXI) → {
+ *   addAtlas(key, atlasJson, imageUrl), addSheet(key, imageUrl, defs),
+ *   loadGroup(keys, cb), texture(frameName), slice(frameName),
+ *   frames(prefix), ready(key), clear()
+ * }
+ */
+
+var LOG = '[AssetManager]';
+
+function create(PIXI) {
+  var atlases = {};    // key → { image, defs, base, ready }
+  var frameIndex = {}; // frameName → { atlasKey, def }
+  var texCache = {};   // frameName → Texture
+
+  function register(key, imageUrl, defs) {
+    atlases[key] = { image: imageUrl, defs: defs, base: null, ready: false };
+    for (var name in defs) {
+      if (frameIndex[name]) {
+        console.warn(LOG, 'duplicate frame name:', name, '(atlas', key + ')');
+      }
+      frameIndex[name] = { atlasKey: key, def: defs[name] };
+    }
+  }
+
+  function loadOne(key, cb) {
+    var atlas = atlases[key];
+    if (!atlas) {
+      console.warn(LOG, 'unknown atlas:', key);
+      cb(false);
+      return;
+    }
+    if (atlas.ready) { cb(true); return; }
+    var base = PIXI.BaseTexture.from(atlas.image);
+    atlas.base = base;
+    function done() {
+      atlas.ready = true;
+      cb(true);
+    }
+    if (base.valid) {
+      done();
+    } else {
+      base.once('loaded', done);
+      base.once('error', function () {
+        console.warn(LOG, 'atlas load failed:', key, atlas.image);
+        cb(false);
+      });
+    }
+  }
+
+  return {
+    /** TexturePacker JSON Hash 图集 */
+    addAtlas: function (key, atlasJson, imageUrl) {
+      var defs = {};
+      var frames = atlasJson.frames || {};
+      for (var name in frames) {
+        var f = frames[name];
+        defs[name] = {
+          x: f.frame.x, y: f.frame.y, w: f.frame.w, h: f.frame.h,
+          slice: f.slice || (f.frame.slice || null)
+        };
+      }
+      var img = imageUrl || (atlasJson.meta && atlasJson.meta.image);
+      register(key, img, defs);
+    },
+
+    /** 手写切片图集：defs = { 帧名: {x,y,w,h,slice?} } */
+    addSheet: function (key, imageUrl, defs) {
+      register(key, imageUrl, defs);
+    },
+
+    /**
+     * 组加载：keys 为图集 key 数组；全部完成后 cb(okCount, total)
+     * 失败不阻塞（对应帧走程序化回退）
+     */
+    loadGroup: function (keys, cb) {
+      cb = cb || function () {};
+      var total = keys.length;
+      if (!total) { cb(0, 0); return; }
+      var left = total;
+      var ok = 0;
+      keys.forEach(function (key) {
+        loadOne(key, function (success) {
+          if (success) { ok++; }
+          left--;
+          if (left === 0) { cb(ok, total); }
+        });
+      });
+    },
+
+    /** 帧名 → Texture；图集未就绪或帧不存在返回 null（调用方走回退） */
+    texture: function (frameName) {
+      if (texCache[frameName]) { return texCache[frameName]; }
+      var hit = frameIndex[frameName];
+      if (!hit) { return null; }
+      var atlas = atlases[hit.atlasKey];
+      if (!atlas || !atlas.ready) { return null; }
+      var d = hit.def;
+      var tex = new PIXI.Texture(atlas.base, new PIXI.Rectangle(d.x, d.y, d.w, d.h));
+      texCache[frameName] = tex;
+      return tex;
+    },
+
+    /** 帧的九宫格元数据 [l,t,r,b]；无则 null */
+    slice: function (frameName) {
+      var hit = frameIndex[frameName];
+      return (hit && hit.def.slice) || null;
+    },
+
+    /** 前缀取帧序列（按名称排序），帧动画用 */
+    frames: function (prefix) {
+      var names = [];
+      for (var name in frameIndex) {
+        if (name.indexOf(prefix) === 0) { names.push(name); }
+      }
+      names.sort();
+      var self = this;
+      return names.map(function (n) { return self.texture(n); }).filter(function (t) { return !!t; });
+    },
+
+    ready: function (key) {
+      return !!(atlases[key] && atlases[key].ready);
+    },
+
+    /** 帧是否可用（图集就绪且帧存在） */
+    has: function (frameName) {
+      var hit = frameIndex[frameName];
+      return !!(hit && atlases[hit.atlasKey] && atlases[hit.atlasKey].ready);
+    },
+
+    clear: function () {
+      for (var k in texCache) {
+        try { texCache[k].destroy(); } catch (e) { /* noop */ }
+      }
+      texCache = {};
+      for (var a in atlases) {
+        if (atlases[a].base) {
+          try { atlases[a].base.destroy(); } catch (e2) { /* noop */ }
+        }
+      }
+      atlases = {};
+      frameIndex = {};
+    }
+  };
+}
+
+module.exports = { create: create };

@@ -1,11 +1,12 @@
 {
   "name": "pixijs-miniprogram",
-  "version": "0.0.4",
-  "description": "pixijs adapter for WeChat MiniProgram",
+  "version": "2.0.0",
+  "description": "pixijs adapter + game framework 2.0 for WeChat MiniProgram",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "webpack --config build/webpack.config.js --watch",
-    "build": "webpack --hide-modules --config build/webpack.config.js",
+    "dev": "NODE_OPTIONS=--openssl-legacy-provider webpack --config build/webpack.config.js --watch",
+    "build": "NODE_OPTIONS=--openssl-legacy-provider webpack --hide-modules --config build/webpack.config.js",
+    "test": "node test/framework.test.js",
     "lint": "eslint \"src/**/*.js\""
   },
   "miniprogram": "dist/",
@@ -25,6 +26,7 @@
     "path": "^0.12.7",
     "pixi.js": "^5.2.0",
     "string-replace-loader": "^2.2.0",
+    "string-replace-webpack-plugin": "^0.1.3",
     "webpack": "^4.39.1",
     "webpack-cli": "^3.3.6"
   },

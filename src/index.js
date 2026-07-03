@@ -5,6 +5,8 @@ import window from './window'
 var DOMParser=require("./xmldom").DOMParser;
 import TouchEvent from "./touchEvent"
 import Audio from './Audio'
+var framework = require('./framework/index.js');
+var unsafeEval = require('./framework/vendor/unsafeEval.js');
 
 export function createPIXI(canvas,stageWidth) {
 	let ratio = stageWidth/canvas.width;
@@ -163,4 +165,19 @@ export function createPIXI(canvas,stageWidth) {
 		window.dispatchEvent(touchEvent)
 	}
 	return PIXI
+}
+
+/** 框架 2.0 命名空间（App/SceneManager/AssetManager/ui/actions/data 等） */
+export { framework }
+
+/**
+ * createGame — 一步装配：createPIXI + unsafeEval + App + 场景/资源/UI 上下文
+ * @param canvas wx canvas node（需已设置 canvas.width/height 为显示尺寸）
+ * @param opts { designWidth=750, maxDt, background, theme }
+ */
+export function createGame(canvas, opts) {
+	opts = opts || {};
+	var PIXI = createPIXI(canvas, opts.designWidth || 750);
+	unsafeEval(PIXI);
+	return framework.createGame(PIXI, canvas, opts);
 }
