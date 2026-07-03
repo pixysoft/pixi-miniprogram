@@ -147,6 +147,39 @@ function create(PIXI) {
       return names.map(function (n) { return self.texture(n); }).filter(function (t) { return !!t; });
     },
 
+    /**
+     * 位图字体胶水（P3：Pixi 自带 BitmapText，fnt 走网络）
+     * fntData：fnt 文件文本（XML/文本格式），textureUrl：字形图
+     * 成功 cb(true)；PIXI.BitmapFont 不可用或解析失败 cb(false)（调用方回退系统字体）
+     */
+    loadBitmapFont: function (key, fntData, textureUrl, cb) {
+      cb = cb || function () {};
+      if (!PIXI.BitmapFont || !PIXI.BitmapFont.install) {
+        console.warn(LOG, 'PIXI.BitmapFont unavailable, fallback to system font');
+        cb(false);
+        return;
+      }
+      var base = PIXI.BaseTexture.from(textureUrl);
+      function install() {
+        try {
+          PIXI.BitmapFont.install(fntData, new PIXI.Texture(base));
+          cb(true);
+        } catch (e) {
+          console.warn(LOG, 'bitmap font install failed:', key, e);
+          cb(false);
+        }
+      }
+      if (base.valid) {
+        install();
+      } else {
+        base.once('loaded', install);
+        base.once('error', function () {
+          console.warn(LOG, 'bitmap font texture failed:', key, textureUrl);
+          cb(false);
+        });
+      }
+    },
+
     ready: function (key) {
       return !!(atlases[key] && atlases[key].ready);
     },

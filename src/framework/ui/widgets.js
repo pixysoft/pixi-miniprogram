@@ -65,6 +65,52 @@ function create(ctx) {
     return t;
   }
 
+  /**
+   * 轻量富文本：分段着色（不做 HTML 解析）
+   * richLabel(segments, opts { size, wrapWidth, lineGap=6 })
+   *   segments: [{ text, color?, size?, bold? }, ...]
+   * 返回 container，挂 { setSegments(segs), labelWidth, labelHeight }
+   * wrapWidth 给定时按段落贪心换行（段内不拆字）
+   */
+  function richLabel(segments, opts) {
+    opts = opts || {};
+    var lineGap = opts.lineGap === undefined ? 6 : opts.lineGap;
+    var c = new PIXI.Container();
+
+    function build(segs) {
+      c.removeChildren();
+      var x = 0;
+      var y = 0;
+      var lineH = 0;
+      var maxW = 0;
+      for (var i = 0; i < segs.length; i++) {
+        var seg = segs[i];
+        var t = label(seg.text, {
+          size: seg.size || opts.size,
+          color: seg.color,
+          bold: seg.bold
+        });
+        if (opts.wrapWidth && x > 0 && x + t.width > opts.wrapWidth) {
+          x = 0;
+          y += lineH + lineGap;
+          lineH = 0;
+        }
+        t.x = x;
+        t.y = y;
+        c.addChild(t);
+        x += t.width;
+        if (t.height > lineH) { lineH = t.height; }
+        if (x > maxW) { maxW = x; }
+      }
+      c.labelWidth = maxW;
+      c.labelHeight = y + lineH;
+    }
+
+    build(segments || []);
+    c.setSegments = build;
+    return c;
+  }
+
   /** 面板容器：九宫格/程序化背景 + 子件自由摆放 */
   function panel(w, h, opts) {
     opts = opts || {};
@@ -217,6 +263,7 @@ function create(ctx) {
     makeBg: makeBg,
     nineSlice: nineSlice,
     label: label,
+    richLabel: richLabel,
     panel: panel,
     button: button,
     progressBar: progressBar,

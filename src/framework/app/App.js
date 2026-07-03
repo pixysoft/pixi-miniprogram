@@ -6,7 +6,8 @@
  *   opts.maxDt        单帧 dt 上限 ms，默认 200（切后台回来防跳变）
  *   opts.background   背景色，默认 0x000000
  * 返回 { PIXI, renderer, stage, stageWidth, stageHeight, timer, actions,
- *        onTick(fn, priority?), offTick(fn), start, stop, dispatchTouch, destroy }
+ *        onTick(fn, priority?), offTick(fn), start, stop, dispatchTouch,
+ *        snapshot(cb, opts), destroy }
  */
 
 var Timer = require('./Timer.js');
@@ -96,6 +97,57 @@ function create(PIXI, canvas, opts) {
     dispatchTouch: function (e) {
       if (PIXI && typeof PIXI.dispatchEvent === 'function') {
         PIXI.dispatchEvent(e);
+      }
+    },
+
+    /**
+     * 截图分享（P3 胶水：README toDataURL 流程封装）
+     * snapshot(cb(err, res), opts { album=false })
+     *   wx 环境：写入临时 png 文件，res = 文件路径；album=true 时再存相册
+     *   非 wx（Node/mock）：res = dataURL 原文
+     */
+    snapshot: function (cb, opts) {
+      cb = cb || function () {};
+      opts = opts || {};
+      renderer.render(stage);   // 确保帧内容最新
+      var dataUrl;
+      try {
+        dataUrl = canvas.toDataURL('image/png');
+      } catch (e) {
+        console.warn(LOG, 'snapshot toDataURL failed', e);
+        cb(e, null);
+        return;
+      }
+      if (typeof wx === 'undefined' || !wx || !wx.getFileSystemManager) {
+        cb(null, dataUrl);
+        return;
+      }
+      try {
+        var filePath = wx.env.USER_DATA_PATH + '/snapshot_' + Date.now() + '.png';
+        var base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+        wx.getFileSystemManager().writeFile({
+          filePath: filePath,
+          data: base64,
+          encoding: 'base64',
+          success: function () {
+            if (opts.album && wx.saveImageToPhotosAlbum) {
+              wx.saveImageToPhotosAlbum({
+                filePath: filePath,
+                success: function () { cb(null, filePath); },
+                fail: function (err) { cb(err, filePath); }
+              });
+            } else {
+              cb(null, filePath);
+            }
+          },
+          fail: function (err) {
+            console.warn(LOG, 'snapshot write failed', err);
+            cb(err, null);
+          }
+        });
+      } catch (e2) {
+        console.warn(LOG, 'snapshot failed', e2);
+        cb(e2, null);
       }
     },
 

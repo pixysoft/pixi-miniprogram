@@ -1,5 +1,5 @@
 /**
- * framework 2.0 冒烟测试（Node 直跑：node test/framework.test.js）
+ * framework 3.0 冒烟测试（Node 直跑：node test/framework.test.js）
  *
  * 测试范围概述：
  *   1. 基础层：EventBus 快照分发 / Timer / Rng 复现与加权 / Store 存取迁移 / Gateway 本地远程
@@ -9,6 +9,13 @@
  *   5. 组件层：Button 三态与点击判定 / ScrollView 拦截与惯性回弹 / List 虚拟化 /
  *              Slider 取值 / Modal 开关 / Toast 淡出 / legacy 兼容签名
  *   6. 动作层：sequence / spawn / repeat / 目标销毁自动停止
+ *   7. 世界层底座（3.0 P0）：Camera / SpriteAnimator / addStrip / AudioManager /
+ *              transitions.fade / Layout 锚点
+ *   8. 演出层（3.0 P1）：Particle / filters 预设与回退 / FxLayer / CooldownButton /
+ *              bezierTo+splineTo / ScrollView 水平与磁吸
+ *   9. 世界层（3.0 P2）：ChunkWorld / ChunkRenderer / EntityManager / PinchPan /
+ *              TabBar / PageView
+ *  10. 胶水层（3.0 P3）：richLabel 分段着色 / app.snapshot / SpinePlayer 降级
  * 全部使用 mock PIXI（仅结构与事件，无渲染），只测正确流程。
  */
 
@@ -1192,6 +1199,74 @@ test('PageView 磁吸翻页与 goTo', function () {
   pv.goTo(2, false);
   assert.strictEqual(pv.pageIndex(), 2);
   assert.strictEqual(pv.content.x, -800);
+});
+
+// ===== 10. 胶水层（3.0 P3） =====
+
+console.log('\n[10] 胶水层');
+
+// 输入：三段不同色文本 + wrapWidth；期望：分段着色、贪心换行、尺寸统计
+test('richLabel 分段着色与换行', function () {
+  var ctx = makeCtx();
+  var w = fw.widgets.create(ctx);
+  var r = w.richLabel([
+    { text: '获得 ' },
+    { text: '100 金币', color: 0xF2C14E, bold: true },
+    { text: '，继续加油！' }
+  ], { size: 26 });
+  assert.strictEqual(r.children.length, 3);
+  assert.strictEqual(r.children[1].style.fill, 0xF2C14E);
+  assert.ok(r.children[2].x > r.children[1].x, '同行依次排布');
+  assert.ok(r.labelWidth > 0 && r.labelHeight > 0);
+
+  var wrapped = w.richLabel([
+    { text: 'AAAAAAAA' },
+    { text: 'BBBBBBBB' },
+    { text: 'CC' }
+  ], { size: 26, wrapWidth: 120 });
+  assert.ok(wrapped.children[1].y > wrapped.children[0].y, '超宽段换行');
+  wrapped.setSegments([{ text: 'X' }]);
+  assert.strictEqual(wrapped.children.length, 1, 'setSegments 重建');
+});
+
+// 输入：mock canvas 的 App.snapshot（非 wx 环境）；期望：回调 dataURL
+test('app.snapshot 非 wx 环境回 dataURL', function () {
+  var canvas = {
+    width: 375, height: 667,
+    requestAnimationFrame: function () { return 1; },
+    cancelAnimationFrame: function () {},
+    toDataURL: function () { return 'data:image/png;base64,QUJD'; }
+  };
+  var PIXI2 = {
+    autoDetectRenderer: function () { return { render: function () {} }; },
+    Container: Container,
+    Rectangle: Rectangle
+  };
+  var app = fw.App.create(PIXI2, canvas, {});
+  var got = null;
+  app.snapshot(function (err, res) { got = [err, res]; });
+  assert.strictEqual(got[0], null);
+  assert.strictEqual(got[1], 'data:image/png;base64,QUJD');
+});
+
+// 输入：无 pixi-spine 挂载的 SpinePlayer；期望：available false、load 回调错误不抛异常
+test('SpinePlayer 未挂载 pixi-spine 时降级', function () {
+  var SpinePlayer = require('../src/plugins/SpinePlayer.js');
+  var sp = SpinePlayer.create(PIXI);
+  assert.strictEqual(sp.available(), false);
+  var got = null;
+  sp.load('hero', 'hero.json', function (err, inst) { got = [err, inst]; });
+  assert.ok(got[0] instanceof Error);
+  assert.strictEqual(got[1], null);
+  sp.dispose(null);   // 容错不抛
+});
+
+// 输入：PIXI.BitmapFont 不可用；期望：loadBitmapFont 回调 false（调用方回退系统字体）
+test('AssetManager loadBitmapFont 降级', function () {
+  var am = fw.AssetManager.create(PIXI);
+  var ok = null;
+  am.loadBitmapFont('gold', '<font/>', 'gold.png', function (r) { ok = r; });
+  assert.strictEqual(ok, false);
 });
 
 // ===== 总结 =====

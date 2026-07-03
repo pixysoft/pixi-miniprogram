@@ -1,7 +1,7 @@
 {
   "name": "pixijs-miniprogram",
-  "version": "2.0.0",
-  "description": "pixijs adapter + game framework 2.0 for WeChat MiniProgram",
+  "version": "3.0.0",
+  "description": "pixijs adapter + game framework 3.0 (UI 工业化 + 世界表现层) for WeChat MiniProgram",
   "main": "dist/index.js",
   "scripts": {
     "dev": "NODE_OPTIONS=--openssl-legacy-provider webpack --config build/webpack.config.js --watch",

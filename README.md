@@ -1,5 +1,12 @@
 #pixijs 小程序 WebGL 的适配版本。
 ---
+  - 2026.7.03 **v3.0.0**：framework 补齐「世界表现层」（分支 feature/fable5_dev_3）。主包产物仍为 `dist/pixi.miniprogram.js`，插件线独立分包产物 `dist/plugins/spine.player.js`（不进主包）：
+    - **P0 收编现网 fork**：`Camera` 世界相机（平滑跟随 + 拖拽接管 + 空闲回跟 + 边界钳制，合并大航海/Rich4 版）、`SpriteAnimator` 帧动画播放器（dt 驱动，`game.animator(sprite)` 自动接管）+ `assets.addStrip` 等宽条带切帧、`AudioManager`（BGM 双通道交叉淡入 + SFX 并发上限 4，URL 由游戏注册，`game.audio` 自动接入主循环）、`transitions.fade` 内置转场（phase 状态机，转场期吞触摸）、`Layout` 单层锚点布局（center > left > right 优先级 + left/right 拉伸 + w/h 百分比 + relayout）
+    - **P1 演出层**：`Particle` 轻量粒子（点/圆发射器 + 对象池 + 上限 100）、`filters` 预设（night/hurt/glow/custom，无 ColorMatrixFilter 时回退 tint）、`FxLayer` 战斗飘字/碎块/圆环（收编 KR2 Fx，Text 对象池 + FxText 皮肤键）、`CooldownButton` 径向 CD 按钮（收编 KR2 skillButton，皮肤化）、`actions.bezierTo / splineTo` 曲线动作（cocos 公式）、ScrollView 轴向化（`direction:'x'` 水平 + `snapInterval` 磁吸）
+    - **P2 世界层**：`ChunkWorld` 分块世界（ChunkProvider 协议 + 32×32 chunk + 视口外卸载 + `staticProvider` 包装 1.0 静态图）、`ChunkRenderer`（每 chunk 一 Container + Sprite 池）、`EntityManager` Lite（spawn/despawn + `syncTo` 位置插值，多人他船平滑）、`PinchPan` 手势插件（单指平移/双指缩放/点击/长按）、`TabBar`（皮肤化选中态）+ `PageView`（磁吸翻页）
+    - **P3 胶水（按需分包）**：`plugins/SpinePlayer`（Spine 3.8 加载/播放/dispose，独立产物）、`assets.loadBitmapFont` + `ui.richLabel` 分段着色、`app.snapshot` 截图（wx 写临时文件/存相册，非 wx 回 dataURL）
+    - 冒烟测试 60 项全绿（`npm test`）；明确不做：ECS/物理/布局树/多 Camera/EXML 编辑器链路
+---
   - 2026.7.03 **v2.0.0**：新增 framework 游戏框架层（分支 feature/fable5_dev_2.0）。产物同为单文件 `dist/pixi.miniprogram.js`，新导出 `framework` 与 `createGame`：
     - app：App 主循环（tick 优先级 / maxDt / Timer / actions 接管）、createGame 一步装配
     - scene：SceneManager（场景栈 + transition 钩子）、EventBus（快照分发）
