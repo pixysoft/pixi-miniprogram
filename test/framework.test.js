@@ -31,6 +31,7 @@ function Container() {
   this.parent = null;
 }
 Container.prototype.addChild = function (c) { this.children.push(c); c.parent = this; return c; };
+Container.prototype.addChildAt = function (c, i) { this.children.splice(i, 0, c); c.parent = this; return c; };
 Container.prototype.removeChild = function (c) {
   var i = this.children.indexOf(c);
   if (i >= 0) { this.children.splice(i, 1); c.parent = null; }
@@ -38,6 +39,12 @@ Container.prototype.removeChild = function (c) {
 Container.prototype.removeChildren = function () { this.children = []; };
 Container.prototype.on = function (evt, fn) {
   (this._handlers[evt] = this._handlers[evt] || []).push(fn);
+  return this;
+};
+Container.prototype.off = function (evt, fn) {
+  var arr = this._handlers[evt] || [];
+  var i = arr.indexOf(fn);
+  if (i >= 0) { arr.splice(i, 1); }
   return this;
 };
 Container.prototype.trigger = function (evt, ev) {
@@ -998,6 +1005,193 @@ test('ScrollView 磁吸翻页', function () {
   sv.snapTo(0, false);
   assert.deepStrictEqual(snaps, [1, 0]);
   assert.strictEqual(sv.content.x, 0);
+});
+
+// ===== 9. 世界层（3.0 P2） =====
+
+console.log('\n[9] 世界层');
+
+// 输入：staticProvider 包装 64×64 全图，视口移动；期望：chunk 进出、内存不增长
+test('ChunkWorld 加载/卸载与视口移动', function () {
+  var mapW = 64;
+  var mapH = 64;
+  var tiles = [];
+  for (var i = 0; i < mapW * mapH; i++) { tiles.push(i % 7); }
+  var provider = fw.ChunkWorld.staticProvider(tiles, mapW, mapH, 16);
+  var loads = [];
+  var unloads = [];
+  var world = fw.ChunkWorld.create(provider, {
+    chunkSize: 16, keepRing: 1,
+    onLoad: function (cx, cy) { loads.push(cx + ',' + cy); },
+    onUnload: function (cx, cy) { unloads.push(cx + ',' + cy); }
+  });
+
+  world.setViewTiles(0, 0, 15, 15);   // 1 chunk
+  assert.strictEqual(world.loadedCount(), 1);
+  assert.strictEqual(world.getTile(3, 0), 3);
+  assert.strictEqual(world.getTile(63, 63), undefined, '视口外 chunk 未加载');
+
+  world.setViewTiles(48, 48, 63, 63);  // 移到对角（chunk 3,3），距离 > keepRing
+  assert.ok(world.getTile(3, 0) === undefined, '远处 chunk 已卸载');
+  assert.strictEqual(world.getTile(50, 50), tiles[50 * 64 + 50]);
+  assert.ok(unloads.indexOf('0,0') >= 0, '0,0 被卸载');
+  assert.strictEqual(world.loadedCount(), 1, '内存不随移动增长');
+
+  assert.ok(world.setTile(50, 50, 99));
+  assert.strictEqual(world.getTile(50, 50), 99);
+});
+
+// 输入：staticProvider 越界 chunk；期望：fill 填充不越界报错
+test('ChunkWorld staticProvider 越界填充', function () {
+  var provider = fw.ChunkWorld.staticProvider([1, 1, 1, 1], 2, 2, 4, 0);
+  var got = null;
+  provider.getChunk(0, 0, function (tiles) { got = tiles; });
+  assert.strictEqual(got.length, 16);
+  assert.strictEqual(got[0], 1);
+  assert.strictEqual(got[3], 0, '越界 fill 0');
+});
+
+// 输入：ChunkRenderer 跟随偏移推进；期望：chunk 容器构建/回收、sprite 回池、容器反向偏移
+test('ChunkRenderer 构建回收与偏移', function () {
+  var mapW = 64;
+  var tiles = [];
+  for (var i = 0; i < 64 * 64; i++) { tiles.push(1); }
+  var provider = fw.ChunkWorld.staticProvider(tiles, 64, 64, 16);
+  var world = fw.ChunkWorld.create(provider, { chunkSize: 16, keepRing: 0 });
+  var r = fw.ChunkRenderer.create(PIXI, world, {
+    tileSize: 10,
+    pad: 0,
+    textureFor: function (tile) { return tile ? { width: 10, height: 10 } : null; }
+  });
+
+  r.update(0, 0, 160, 160);   // 视口盖 chunk(0,0)~(1,1)
+  var built1 = r.builtCount();
+  assert.ok(built1 >= 4, '视口内 chunk 已构建');
+  assert.strictEqual(r.container.x, 0);
+
+  r.update(480, 480, 160, 160);   // 移到 (3,3) 附近
+  assert.ok(r.builtCount() <= built1, '远处 chunk 已回收');
+  assert.strictEqual(r.container.x, -480);
+  assert.strictEqual(r.container.y, -480);
+});
+
+// 输入：spawn 两实体 + syncTo 插值；期望：半程位置过半、到点清除插值、sprite 同步
+test('EntityManager spawn/despawn/syncTo', function () {
+  var layer = new Container();
+  var em = fw.EntityManager.create({ layer: layer });
+  var sp = new Sprite({});
+  em.spawn('ship1', { sprite: sp, x: 0, y: 0 });
+  em.spawn('ship2', { x: 100, y: 100 });
+  assert.strictEqual(em.count(), 2);
+  assert.strictEqual(layer.children.length, 1, 'sprite 自动上层');
+
+  em.get('ship1').syncTo(100, 0, 200);
+  em.update(100);
+  assert.strictEqual(em.get('ship1').x, 50, '半程插值');
+  assert.strictEqual(sp.x, 50, 'sprite 同步');
+  em.update(100);
+  assert.strictEqual(em.get('ship1').x, 100);
+
+  var ticks = 0;
+  em.get('ship2').update = function (dt, ent) { ticks++; };
+  em.update(16);
+  assert.strictEqual(ticks, 1, '实体自定义 update 被驱动');
+
+  em.despawn('ship1');
+  assert.strictEqual(em.count(), 1);
+  assert.ok(sp.destroyed, '默认销毁 sprite');
+  assert.strictEqual(layer.children.length, 0);
+});
+
+function pev(id, x, y) {
+  return { data: { pointerId: id, global: { x: x, y: y } } };
+}
+
+// 输入：单指拖动；期望：onPan 增量正确；快速点击触发 onTap
+test('PinchPan 单指平移与点击', function () {
+  var node = new Container();
+  var pans = [];
+  var taps = [];
+  fw.PinchPan.create(node, {
+    onPan: function (dx, dy) { pans.push([dx, dy]); },
+    onTap: function (x, y) { taps.push([x, y]); }
+  });
+  node.trigger('pointerdown', pev(1, 100, 100));
+  node.trigger('pointermove', pev(1, 130, 100));   // 超 tapPx 才开始 pan
+  node.trigger('pointermove', pev(1, 150, 110));
+  node.trigger('pointerup', pev(1, 150, 110));
+  assert.deepStrictEqual(pans[pans.length - 1], [20, 10]);
+  assert.strictEqual(taps.length, 0, '拖动不触发 tap');
+
+  node.trigger('pointerdown', pev(1, 50, 60));
+  node.trigger('pointerup', pev(1, 52, 61));
+  assert.deepStrictEqual(taps, [[52, 61]]);
+});
+
+// 输入：双指开合；期望：onPinch factor = 本次距离比、中心点正确
+test('PinchPan 双指缩放', function () {
+  var node = new Container();
+  var pinches = [];
+  fw.PinchPan.create(node, {
+    onPinch: function (f, cx, cy) { pinches.push([f, cx, cy]); }
+  });
+  node.trigger('pointerdown', pev(1, 100, 100));
+  node.trigger('pointerdown', pev(2, 200, 100));   // 距离 100
+  node.trigger('pointermove', pev(2, 300, 100));   // 距离 200 → factor 2
+  assert.strictEqual(pinches.length, 1);
+  assert.strictEqual(pinches[0][0], 2);
+  assert.strictEqual(pinches[0][1], 200, '双指中心 x');
+  node.trigger('pointerup', pev(2, 300, 100));
+  node.trigger('pointerup', pev(1, 100, 100));
+});
+
+// 输入：TabBar 三项点击切换；期望：选中态切换、onSelect 只在变更时触发
+test('TabBar 选中态与回调', function () {
+  var ctx = makeCtx();
+  var w = fw.widgets.create(ctx);
+  var selects = [];
+  var tab = fw.TabBar.create(ctx, w, {
+    items: [{ key: 'port', label: '母港' }, { key: 'map', label: '地图' }, { key: 'fleet', label: '舰队' }],
+    w: 750, h: 106,
+    onSelect: function (k) { selects.push(k); }
+  });
+  assert.strictEqual(tab.selected(), 'port', '默认选中首项');
+
+  var mapBtn = tab.children[2];   // [bg, portBtn, mapBtn, fleetBtn]
+  mapBtn.trigger('pointerdown', ev(0, 0));
+  mapBtn.trigger('pointerup', ev(0, 0));
+  assert.strictEqual(tab.selected(), 'map');
+  assert.deepStrictEqual(selects, ['map']);
+
+  mapBtn.trigger('pointerdown', ev(0, 0));
+  mapBtn.trigger('pointerup', ev(0, 0));
+  assert.deepStrictEqual(selects, ['map'], '重复点击当前项不触发');
+});
+
+// 输入：PageView 三页拖动翻页 + goTo；期望：磁吸到页、onPage 回调、页索引正确
+test('PageView 磁吸翻页与 goTo', function () {
+  var ctx = makeCtx();
+  var pagesSeen = [];
+  var pv = fw.PageView.create(ctx, {
+    w: 400, h: 300,
+    onPage: function (idx) { pagesSeen.push(idx); }
+  });
+  pv.addPage(new Container());
+  pv.addPage(new Container());
+  pv.addPage(new Container());
+  assert.strictEqual(pv.content.children.length, 3);
+  assert.strictEqual(pv.content.children[2].x, 800);
+
+  pv.trigger('pointerdown', ev(390, 150));
+  pv.trigger('pointermove', ev(150, 150));   // 拖 240 超半页
+  pv.trigger('pointerup', ev(150, 150));
+  for (var f = 0; f < 60; f++) { pv.update(16); }
+  assert.strictEqual(pv.pageIndex(), 1);
+  assert.deepStrictEqual(pagesSeen, [1]);
+
+  pv.goTo(2, false);
+  assert.strictEqual(pv.pageIndex(), 2);
+  assert.strictEqual(pv.content.x, -800);
 });
 
 // ===== 总结 =====

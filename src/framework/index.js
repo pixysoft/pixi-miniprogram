@@ -14,6 +14,10 @@ var TextureCache = require('./assets/TextureCache.js');
 var SpriteAnimator = require('./assets/SpriteAnimator.js');
 var AudioManager = require('./audio/AudioManager.js');
 var Camera = require('./world/Camera.js');
+var ChunkWorld = require('./world/ChunkWorld.js');
+var ChunkRenderer = require('./world/ChunkRenderer.js');
+var EntityManager = require('./world/EntityManager.js');
+var PinchPan = require('./input/PinchPan.js');
 var Layout = require('./ui/Layout.js');
 var Particle = require('./fx/Particle.js');
 var filters = require('./fx/filters.js');
@@ -24,6 +28,8 @@ var Widget = require('./ui/Widget.js');
 var widgets = require('./ui/widgets.js');
 var ScrollView = require('./ui/ScrollView.js');
 var List = require('./ui/List.js');
+var TabBar = require('./ui/TabBar.js');
+var PageView = require('./ui/PageView.js');
 var Slider = require('./ui/Slider.js');
 var Modal = require('./ui/Modal.js');
 var Toast = require('./ui/Toast.js');
@@ -58,6 +64,12 @@ module.exports = {
 
   // world
   Camera: Camera,
+  ChunkWorld: ChunkWorld,
+  ChunkRenderer: ChunkRenderer,
+  EntityManager: EntityManager,
+
+  // input
+  PinchPan: PinchPan,
 
   // fx
   Particle: Particle,
@@ -73,6 +85,8 @@ module.exports = {
   List: List,
   Slider: Slider,
   CooldownButton: CooldownButton,
+  TabBar: TabBar,
+  PageView: PageView,
   Modal: Modal,
   Toast: Toast,
   legacy: legacy,

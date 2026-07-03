@@ -17,7 +17,7 @@
  *   game.animator(sprite) — SpriteAnimator（sprite 销毁自动剔除）
  *   game.particle(cfg) / game.fxLayer(opts) — 演出层（自动接入主循环）
  *   game.filters — Filter 预设（night/hurt/glow/custom）
- *   ui.cooldownButton(opts) — 径向 CD 按钮
+ *   ui.cooldownButton(opts) / ui.tabBar(opts) / ui.pageView(opts)
  */
 
 var App = require('./App.js');
@@ -39,6 +39,8 @@ var Particle = require('../fx/Particle.js');
 var filtersMod = require('../fx/filters.js');
 var FxLayer = require('../fx/FxLayer.js');
 var CooldownButton = require('../ui/CooldownButton.js');
+var TabBar = require('../ui/TabBar.js');
+var PageView = require('../ui/PageView.js');
 
 function createGame(PIXI, canvas, opts) {
   opts = opts || {};
@@ -96,6 +98,8 @@ function createGame(PIXI, canvas, opts) {
   };
   ui.legacy = function () { return legacyMod.create(uiCtx); };
   ui.cooldownButton = function (o) { return CooldownButton.create(uiCtx, w, o); };
+  ui.tabBar = function (o) { return TabBar.create(uiCtx, w, o); };
+  ui.pageView = function (o) { return track(PageView.create(uiCtx, o)); };
 
   return {
     app: app,
