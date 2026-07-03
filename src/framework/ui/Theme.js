@@ -52,6 +52,23 @@ var DEFAULTS = {
   Currency: {
     bg: { color: 0x14171F, alpha: 0.8, radius: 0.5 },
     label: { size: 24, color: 0xFFFFFF, bold: true }
+  },
+  FxText: {
+    damage: { size: 22, color: 0xFFFFFF, bold: true },
+    crit: { size: 22, color: 0xF2C14E, bold: true },   // crit 实际字号 ×1.5
+    coin: { size: 24, color: 0xF2C14E, bold: true },
+    label: { size: 26, color: 0xFFFFFF, bold: true }
+  },
+  CooldownButton: {
+    bg: { color: 0x232836 },
+    rim: { color: 0x3B72B0, active: 0xF2C14E },
+    mask: { color: 0x14161C, alpha: 0.72 },
+    label: { size: 24, color: 0xFFFFFF, bold: true }
+  },
+  TabBar: {
+    bg: { color: 0x14171F, alpha: 0.98, radius: 0 },
+    item: { bg: { color: 0x232836, radius: 0.24 }, label: { size: 26, color: 0xFFFFFF, bold: true } },
+    active: { bg: { color: 0x3B72B0 } }
   }
 };
 

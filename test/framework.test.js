@@ -79,7 +79,7 @@ Object.defineProperty(Text.prototype, 'height', {
 function Graphics() { Container.call(this); }
 Graphics.prototype = Object.create(Container.prototype);
 ['beginFill', 'endFill', 'lineStyle', 'drawRoundedRect', 'drawRect', 'drawCircle',
- 'drawEllipse', 'drawPolygon', 'moveTo', 'lineTo', 'quadraticCurveTo', 'arc'
+ 'drawEllipse', 'drawPolygon', 'moveTo', 'lineTo', 'quadraticCurveTo', 'arc', 'clear'
 ].forEach(function (m) { Graphics.prototype[m] = function () { return this; }; });
 
 function Rectangle(x, y, w, h) { this.x = x; this.y = y; this.width = w; this.height = h; }
@@ -819,6 +819,185 @@ test('Layout attach 与 relayout', function () {
   n.relayout({ w: 400, h: 800 });
   assert.strictEqual(n.x, 300);
   assert.strictEqual(n.y, 750);
+});
+
+// ===== 8. 演出层（3.0 P1） =====
+
+console.log('\n[8] 演出层');
+
+// 输入：rate=100/s 推进 1s；期望：粒子受上限约束、寿命到期回池复用、位置受重力影响
+test('Particle 发射/上限/池复用', function () {
+  var tex = { width: 8, height: 8 };
+  var em = fw.Particle.create(PIXI, {
+    texture: tex, rate: 100, life: 500, speed: 100, gravity: 200, max: 30
+  });
+  em.start();
+  for (var i = 0; i < 30; i++) { em.update(16); }   // ~480ms ≈ 48 发射意图
+  assert.ok(em.count() <= 30, '受 max 上限约束');
+  assert.ok(em.count() > 0);
+  var spriteTotal = em.container.children.length;
+  for (var j = 0; j < 100; j++) { em.update(16); }  // 再 1.6s：老粒子回池
+  assert.ok(em.container.children.length <= spriteTotal + 5, '池复用，sprite 数收敛');
+  em.stop();
+  for (var k = 0; k < 60; k++) { em.update(16); }
+  assert.strictEqual(em.count(), 0, '停止后全部消亡');
+});
+
+// 输入：burst 一次性爆发；期望：立即产生 n 粒且 alpha/scale 随寿命衰减
+test('Particle burst 与衰减', function () {
+  var em = fw.Particle.create(PIXI, {
+    texture: {}, rate: 0, life: 400, speed: 0, alphaFrom: 1, alphaTo: 0, scaleFrom: 1, scaleTo: 2
+  });
+  em.burst(10);
+  assert.strictEqual(em.count(), 10);
+  em.update(200);
+  var sp = em.container.children[0];
+  assert.ok(Math.abs(sp.alpha - 0.5) < 0.01, '半寿命 alpha≈0.5');
+  assert.ok(Math.abs(sp.scale.x - 1.5) < 0.01, '半寿命 scale≈1.5');
+});
+
+// 输入：mock PIXI 无 ColorMatrixFilter；期望：回退 tint，clear 还原
+test('filters 预设 tint 回退与 clear', function () {
+  var f = fw.filters.create(PIXI);
+  var sp = new Sprite({});
+  sp.tint = 0xFFFFFF;
+  var r = f.night(sp);
+  assert.strictEqual(r.type, 'tint');
+  assert.strictEqual(sp.tint, 0x5566AA);
+  f.clear(sp);
+  assert.strictEqual(sp.tint, 0xFFFFFF, 'clear 还原原 tint');
+});
+
+// 输入：注入 ColorMatrixFilter 的 PIXI；期望：走 filter 路径并可 clear
+test('filters 预设 ColorMatrixFilter 路径', function () {
+  function CMF() {
+    this.calls = [];
+    var self = this;
+    this.brightness = function (v) { self.calls.push(['brightness', v]); };
+    this.tint = function (v) { self.calls.push(['tint', v]); };
+  }
+  var PIXI2 = { filters: { ColorMatrixFilter: CMF }, Filter: function () {} };
+  var f = fw.filters.create(PIXI2);
+  var target = { filters: null };
+  var r = f.glow(target);
+  assert.strictEqual(r.type, 'filter');
+  assert.strictEqual(target.filters.length, 1);
+  assert.deepStrictEqual(r.filter.calls[0], ['brightness', 1.4]);
+  f.clear(target);
+  assert.strictEqual(target.filters, null);
+});
+
+// 输入：飘字 + 推进至消亡，再发一条；期望：Text 对象池复用不新建
+test('FxLayer 飘字对象池复用', function () {
+  var ctx = makeCtx();
+  var fx = fw.FxLayer.create(ctx);
+  fx.damageText(100, 200, 55);
+  fx.coinText(100, 200, 10);
+  assert.strictEqual(fx.activeCount(), 2);
+  var textNodes = fx.container.children.length;
+  for (var i = 0; i < 80; i++) { fx.update(16); }
+  assert.strictEqual(fx.activeCount(), 0);
+  fx.label(50, 50, 'LEVEL UP');
+  assert.strictEqual(fx.container.children.length, textNodes, '复用池内 Text，不新建');
+  var t = fx.container.children.filter(function (c) { return c.visible; })[0];
+  assert.strictEqual(t.text, 'LEVEL UP');
+});
+
+// 输入：burst 碎块 + ring 圆环推进；期望：重力坠落、圆环扩散后清理
+test('FxLayer 碎块与圆环', function () {
+  var ctx = makeCtx();
+  var fx = fw.FxLayer.create(ctx);
+  fx.burst(0, 0, 0xE05B4B, 4);
+  fx.ring(10, 10, 40);
+  assert.strictEqual(fx.activeCount(), 5);
+  for (var i = 0; i < 60; i++) { fx.update(16); }
+  assert.strictEqual(fx.activeCount(), 0, '全部消亡清理');
+});
+
+// 输入：setCooldown 0.5 → 0；期望：遮罩重绘、图标灰/亮、CD 中不可点
+test('CooldownButton 径向 CD', function () {
+  var ctx = makeCtx();
+  ctx.assets.addSheet('sk', 'sk.png', { icon_fire: { x: 0, y: 0, w: 32, h: 32 } });
+  ctx.assets.loadGroup(['sk'], function () {});
+  var w = fw.widgets.create(ctx);
+  var tapped = 0;
+  var btn = fw.CooldownButton.create(ctx, w, {
+    radius: 50, icon: 'icon_fire', onTap: function () { tapped++; }
+  });
+  btn.setCooldown(0.5, 3);
+  assert.strictEqual(btn.getCooldown(), 0.5);
+  btn.trigger('pointerdown', ev(0, 0));
+  btn.trigger('pointerup', ev(0, 0));
+  assert.strictEqual(tapped, 0, 'CD 中不可点');
+  btn.setCooldown(0);
+  btn.trigger('pointerdown', ev(0, 0));
+  btn.trigger('pointerup', ev(0, 0));
+  assert.strictEqual(tapped, 1, 'CD 结束可点');
+});
+
+// 输入：bezierTo 对称控制点；期望：终值精确、中点在弦上方（抛物线弧）
+test('actions bezierTo 曲线', function () {
+  var mgr = fw.actions.createManager();
+  var t = fakeTarget();
+  mgr.run(t, fw.actions.bezierTo(100, { x: 50, y: -100 }, { x: 150, y: -100 }, { x: 200, y: 0 }));
+  mgr.update(50);
+  assert.ok(Math.abs(t.x - 100) < 1e-9, '中点 x 在弦中央');
+  assert.ok(t.y < -50, '中点 y 拱起');
+  mgr.update(50);
+  assert.strictEqual(t.x, 200);
+  assert.strictEqual(t.y, 0);
+});
+
+// 输入：splineTo 穿点序列；期望：终值精确、途径点近似命中
+test('actions splineTo 样条', function () {
+  var mgr = fw.actions.createManager();
+  var t = fakeTarget();
+  mgr.run(t, fw.actions.splineTo(300, [{ x: 100, y: 100 }, { x: 200, y: 0 }, { x: 300, y: 100 }]));
+  mgr.update(100);   // r = 1/3 → 恰在第 1 个途径点
+  assert.ok(Math.abs(t.x - 100) < 1e-6 && Math.abs(t.y - 100) < 1e-6, '穿过途径点');
+  mgr.update(200);
+  assert.strictEqual(t.x, 300);
+  assert.strictEqual(t.y, 100);
+});
+
+// 输入：水平 ScrollView 拖动与惯性；期望：与垂直对称，停在右边界
+test('ScrollView 水平方向', function () {
+  var ctx = makeCtx();
+  var sv = fw.ScrollView.create(ctx, { w: 400, h: 300, direction: 'x' });
+  sv.setContentWidth(500);   // maxScroll = 100
+
+  sv.trigger('pointerdown', ev(300, 150));
+  var x = 300;
+  for (var i = 0; i < 5; i++) {
+    x -= 30;
+    sv.trigger('pointermove', ev(x, 150));
+  }
+  sv.trigger('pointerup', ev(x, 150));
+  for (var f = 0; f < 200; f++) { sv.update(16); }
+  assert.strictEqual(Math.round(sv.content.x), -100, '最终停在右边界');
+  assert.strictEqual(sv.scrollX(), 100);
+});
+
+// 输入：snapInterval=400 拖过半页释放；期望：磁吸到下一页并回调 onSnap
+test('ScrollView 磁吸翻页', function () {
+  var ctx = makeCtx();
+  var snaps = [];
+  var sv = fw.ScrollView.create(ctx, {
+    w: 400, h: 300, direction: 'x', snapInterval: 400,
+    onSnap: function (idx) { snaps.push(idx); }
+  });
+  sv.setContentWidth(1200);   // 3 页
+
+  sv.trigger('pointerdown', ev(390, 150));
+  sv.trigger('pointermove', ev(180, 150));   // 拖 210 > 半页
+  sv.trigger('pointerup', ev(180, 150));
+  for (var f = 0; f < 60; f++) { sv.update(16); }
+  assert.strictEqual(sv.content.x, -400, '吸附到第 1 页');
+  assert.deepStrictEqual(snaps, [1]);
+
+  sv.snapTo(0, false);
+  assert.deepStrictEqual(snaps, [1, 0]);
+  assert.strictEqual(sv.content.x, 0);
 });
 
 // ===== 总结 =====

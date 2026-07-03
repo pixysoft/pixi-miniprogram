@@ -15,6 +15,10 @@ var SpriteAnimator = require('./assets/SpriteAnimator.js');
 var AudioManager = require('./audio/AudioManager.js');
 var Camera = require('./world/Camera.js');
 var Layout = require('./ui/Layout.js');
+var Particle = require('./fx/Particle.js');
+var filters = require('./fx/filters.js');
+var FxLayer = require('./fx/FxLayer.js');
+var CooldownButton = require('./ui/CooldownButton.js');
 var Theme = require('./ui/Theme.js');
 var Widget = require('./ui/Widget.js');
 var widgets = require('./ui/widgets.js');
@@ -55,6 +59,11 @@ module.exports = {
   // world
   Camera: Camera,
 
+  // fx
+  Particle: Particle,
+  filters: filters,
+  FxLayer: FxLayer,
+
   // ui
   Theme: Theme,
   Widget: Widget,
@@ -63,6 +72,7 @@ module.exports = {
   ScrollView: ScrollView,
   List: List,
   Slider: Slider,
+  CooldownButton: CooldownButton,
   Modal: Modal,
   Toast: Toast,
   legacy: legacy,

@@ -70,11 +70,23 @@ function create(PIXI, renderer) {
     });
   }
 
+  /** 圆环（描边圆：爆炸扩散、CD 按钮外圈） */
+  function ring(radius, color, thickness) {
+    var t = thickness === undefined ? 3 : thickness;
+    return cached('r:' + radius + ':' + color + ':' + t, function () {
+      var g = new PIXI.Graphics();
+      g.lineStyle(t, color, 1);
+      g.drawCircle(radius, radius, radius - t / 2);
+      return g;
+    });
+  }
+
   return {
     cached: cached,
     panel: panel,
     framedPanel: framedPanel,
     circle: circle,
+    ring: ring,
     darken: darken,
     lighten: lighten,
 

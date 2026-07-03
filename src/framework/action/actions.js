@@ -37,6 +37,20 @@ function rotateTo(duration, rotation, ease) {
   return propsTo(duration, { rotation: rotation }, ease);
 }
 
+/** 三次贝塞尔曲线移动（起点 = 运行时当前位置）；cp1/cp2/end = { x, y } */
+function bezierTo(duration, cp1, cp2, end, ease) {
+  return { kind: 'bezier', duration: duration, cp1: cp1, cp2: cp2, end: end, ease: ease || easing.linear };
+}
+
+/** Cardinal 样条穿点移动（cocos CardinalSplineTo 公式）；points = [{x,y},...] */
+function splineTo(duration, points, ease, tension) {
+  return {
+    kind: 'spline', duration: duration, points: points,
+    ease: ease || easing.linear,
+    tension: tension === undefined ? 0.5 : tension
+  };
+}
+
 function delay(duration) {
   return { kind: 'delay', duration: duration };
 }
@@ -84,6 +98,60 @@ function instantiate(desc, target) {
             var v = this.start[p] + (desc.props[p] - this.start[p]) * r;
             if (p === '__scale') { target.scale.set(v); } else { target[p] = v; }
           }
+          return t >= 1;
+        }
+      };
+    case 'bezier':
+      return {
+        elapsed: 0,
+        p0: null,
+        step: function (dt) {
+          if (this.p0 === null) { this.p0 = { x: target.x, y: target.y }; }
+          this.elapsed += dt;
+          var t = desc.duration <= 0 ? 1 : Math.min(1, this.elapsed / desc.duration);
+          var r = desc.ease(t);
+          var u = 1 - r;
+          // B(t) = u³p0 + 3u²r·cp1 + 3ur²·cp2 + r³·end
+          target.x = u * u * u * this.p0.x + 3 * u * u * r * desc.cp1.x + 3 * u * r * r * desc.cp2.x + r * r * r * desc.end.x;
+          target.y = u * u * u * this.p0.y + 3 * u * u * r * desc.cp1.y + 3 * u * r * r * desc.cp2.y + r * r * r * desc.end.y;
+          return t >= 1;
+        }
+      };
+    case 'spline':
+      return {
+        elapsed: 0,
+        pts: null,
+        step: function (dt) {
+          if (this.pts === null) {
+            this.pts = [{ x: target.x, y: target.y }].concat(desc.points);
+          }
+          this.elapsed += dt;
+          var t = desc.duration <= 0 ? 1 : Math.min(1, this.elapsed / desc.duration);
+          var r = desc.ease(t);
+          var pts = this.pts;
+          if (t >= 1) {   // 终点精确落点
+            target.x = pts[pts.length - 1].x;
+            target.y = pts[pts.length - 1].y;
+            return true;
+          }
+          var segs = pts.length - 1;
+          var pos = Math.min(segs - 1e-9, r * segs);
+          var i = Math.floor(pos);
+          var lt = pos - i;
+          // Cardinal spline（cocos ccCardinalSplineAt）：tension 0.5 = Catmull-Rom
+          var p0 = pts[Math.max(0, i - 1)];
+          var p1 = pts[i];
+          var p2 = pts[Math.min(pts.length - 1, i + 1)];
+          var p3 = pts[Math.min(pts.length - 1, i + 2)];
+          var s = (1 - desc.tension) / 2;
+          var t2 = lt * lt;
+          var t3 = t2 * lt;
+          var b1 = s * (-t3 + 2 * t2 - lt);
+          var b2 = s * (-t3 + t2) + (2 * t3 - 3 * t2 + 1);
+          var b3 = s * (t3 - 2 * t2 + lt) + (-2 * t3 + 3 * t2);
+          var b4 = s * (t3 - t2);
+          target.x = p0.x * b1 + p1.x * b2 + p2.x * b3 + p3.x * b4;
+          target.y = p0.y * b1 + p1.y * b2 + p2.y * b3 + p3.y * b4;
           return t >= 1;
         }
       };
@@ -210,6 +278,8 @@ module.exports = {
   scaleTo: scaleTo,
   fadeTo: fadeTo,
   rotateTo: rotateTo,
+  bezierTo: bezierTo,
+  splineTo: splineTo,
   delay: delay,
   call: call,
   sequence: sequence,

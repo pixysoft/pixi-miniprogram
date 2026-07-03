@@ -15,6 +15,9 @@
  * 3.0 追加：
  *   game.audio — AudioManager（update 自动接入主循环）
  *   game.animator(sprite) — SpriteAnimator（sprite 销毁自动剔除）
+ *   game.particle(cfg) / game.fxLayer(opts) — 演出层（自动接入主循环）
+ *   game.filters — Filter 预设（night/hurt/glow/custom）
+ *   ui.cooldownButton(opts) — 径向 CD 按钮
  */
 
 var App = require('./App.js');
@@ -32,6 +35,10 @@ var SceneManager = require('../scene/SceneManager.js');
 var EventBus = require('../scene/EventBus.js');
 var AudioManager = require('../audio/AudioManager.js');
 var SpriteAnimator = require('../assets/SpriteAnimator.js');
+var Particle = require('../fx/Particle.js');
+var filtersMod = require('../fx/filters.js');
+var FxLayer = require('../fx/FxLayer.js');
+var CooldownButton = require('../ui/CooldownButton.js');
 
 function createGame(PIXI, canvas, opts) {
   opts = opts || {};
@@ -88,6 +95,7 @@ function createGame(PIXI, canvas, opts) {
     return Modal.create(uiCtx, w, o);
   };
   ui.legacy = function () { return legacyMod.create(uiCtx); };
+  ui.cooldownButton = function (o) { return CooldownButton.create(uiCtx, w, o); };
 
   return {
     app: app,
@@ -106,6 +114,14 @@ function createGame(PIXI, canvas, opts) {
 
     /** 帧动画播放器（sprite 销毁后自动停更） */
     animator: function (sprite) { return track(SpriteAnimator.create(sprite, assets)); },
+
+    /** 粒子发射器（container 销毁后自动停更） */
+    particle: function (cfg) { return track(Particle.create(PIXI, cfg)); },
+
+    /** 战斗反馈层：飘字/碎块/圆环 */
+    fxLayer: function (o) { return track(FxLayer.create(uiCtx, o)); },
+
+    filters: filtersMod.create(PIXI),
 
     dispatchTouch: function (e) { app.dispatchTouch(e); },
 
