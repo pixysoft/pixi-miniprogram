@@ -5,11 +5,13 @@
  *   { frames: { 帧名: { frame: {x,y,w,h}, slice?: [l,t,r,b] } }, meta: { image } }
  * 兼容手写切片（收编 UW Assets.js 模式）：addSheet(key, imageUrl, defs)
  *   defs: { 帧名: { x, y, w, h, slice? } }
+ * 等宽横条带（收编 CnC2 SpriteAtlas 模式）：addStrip(key, imageUrl, frameW)
+ *   加载后按图宽切帧，帧名 key_01..key_NN（与 frames(prefix) 直接配合）
  *
  * create(PIXI) → {
  *   addAtlas(key, atlasJson, imageUrl), addSheet(key, imageUrl, defs),
- *   loadGroup(keys, cb), texture(frameName), slice(frameName),
- *   frames(prefix), ready(key), clear()
+ *   addStrip(key, imageUrl, frameW), loadGroup(keys, cb),
+ *   texture(frameName), slice(frameName), frames(prefix), ready(key), clear()
  * }
  */
 
@@ -30,6 +32,20 @@ function create(PIXI) {
     }
   }
 
+  /** 条带图集加载完成后按 base 宽度切帧并注册帧索引 */
+  function buildStripDefs(key, atlas) {
+    var count = Math.max(1, Math.floor(atlas.base.width / atlas.strip.frameW));
+    var h = atlas.base.height;
+    var defs = {};
+    for (var i = 0; i < count; i++) {
+      var idx = i + 1;
+      var name = key + '_' + (idx < 10 ? '0' + idx : idx);
+      defs[name] = { x: i * atlas.strip.frameW, y: 0, w: atlas.strip.frameW, h: h };
+      frameIndex[name] = { atlasKey: key, def: defs[name] };
+    }
+    atlas.defs = defs;
+  }
+
   function loadOne(key, cb) {
     var atlas = atlases[key];
     if (!atlas) {
@@ -41,6 +57,7 @@ function create(PIXI) {
     var base = PIXI.BaseTexture.from(atlas.image);
     atlas.base = base;
     function done() {
+      if (atlas.strip && !atlas.defs) { buildStripDefs(key, atlas); }
       atlas.ready = true;
       cb(true);
     }
@@ -74,6 +91,11 @@ function create(PIXI) {
     /** 手写切片图集：defs = { 帧名: {x,y,w,h,slice?} } */
     addSheet: function (key, imageUrl, defs) {
       register(key, imageUrl, defs);
+    },
+
+    /** 等宽横条带切帧（帧数 = 图宽 / frameW，向下取整） */
+    addStrip: function (key, imageUrl, frameW) {
+      atlases[key] = { image: imageUrl, defs: null, base: null, ready: false, strip: { frameW: frameW } };
     },
 
     /**

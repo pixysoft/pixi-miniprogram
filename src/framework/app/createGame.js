@@ -11,6 +11,10 @@
  * ui 在 widgets 基础上追加容器组件工厂（自动接入主循环 update）：
  *   ui.scrollView(opts) / ui.list(opts) / ui.slider(opts) / ui.modal(opts)
  *   ui.legacy() — 旧 widgets 签名兼容层
+ *
+ * 3.0 追加：
+ *   game.audio — AudioManager（update 自动接入主循环）
+ *   game.animator(sprite) — SpriteAnimator（sprite 销毁自动剔除）
  */
 
 var App = require('./App.js');
@@ -26,6 +30,8 @@ var Toast = require('../ui/Toast.js');
 var legacyMod = require('../ui/legacy.js');
 var SceneManager = require('../scene/SceneManager.js');
 var EventBus = require('../scene/EventBus.js');
+var AudioManager = require('../audio/AudioManager.js');
+var SpriteAnimator = require('../assets/SpriteAnimator.js');
 
 function createGame(PIXI, canvas, opts) {
   opts = opts || {};
@@ -46,6 +52,8 @@ function createGame(PIXI, canvas, opts) {
   var toast = Toast.create(uiCtx, w, { stageW: app.stageWidth });
   app.stage.addChild(toast.container);
 
+  var audio = AudioManager.create(opts.audio);
+
   // 需要每帧驱动的 UI 实例（scrollView/list），销毁后自动剔除
   var ticking = [];
   function track(node) {
@@ -56,6 +64,7 @@ function createGame(PIXI, canvas, opts) {
   app.onTick(function (dt) {
     scenes.update(dt);
     toast.update(dt);
+    audio.update(dt);
     for (var i = ticking.length - 1; i >= 0; i--) {
       var node = ticking[i];
       if (node.destroyed) {
@@ -93,6 +102,10 @@ function createGame(PIXI, canvas, opts) {
     bus: bus,
     toast: toast,
     ui: ui,
+    audio: audio,
+
+    /** 帧动画播放器（sprite 销毁后自动停更） */
+    animator: function (sprite) { return track(SpriteAnimator.create(sprite, assets)); },
 
     dispatchTouch: function (e) { app.dispatchTouch(e); },
 
@@ -101,6 +114,7 @@ function createGame(PIXI, canvas, opts) {
       tc.clear();
       assets.clear();
       bus.clear();
+      audio.destroy();
       ticking = [];
     }
   };

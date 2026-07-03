@@ -606,6 +606,221 @@ test('actions forever 与 stop', function () {
   assert.strictEqual(n, after);
 });
 
+// ===== 7. 世界层底座（3.0 P0 收编） =====
+
+console.log('\n[7] 世界层底座');
+
+// 输入：地图 1000² 视口 400²，snapTo 中心与角落；期望：偏移钳制在 [0, 600]
+test('Camera snapTo 与边界钳制', function () {
+  var cam = fw.Camera.create(1000, 1000, 400, 400);
+  cam.snapTo(500, 500);
+  assert.deepStrictEqual(cam.getOffset(), { x: 300, y: 300 });
+  cam.snapTo(0, 0);
+  assert.deepStrictEqual(cam.getOffset(), { x: 0, y: 0 });
+  cam.snapTo(1000, 1000);
+  assert.deepStrictEqual(cam.getOffset(), { x: 600, y: 600 });
+});
+
+// 输入：focus 后推进若干帧；期望：偏移平滑逼近目标
+test('Camera 平滑跟随', function () {
+  var cam = fw.Camera.create(1000, 1000, 400, 400);
+  cam.snapTo(0, 0);
+  cam.focus(500, 500);
+  cam.update(16);
+  var mid = cam.getOffset();
+  assert.ok(mid.x > 0 && mid.x < 300, '首帧只前进一部分');
+  for (var i = 0; i < 100; i++) { cam.update(16); }
+  assert.deepStrictEqual(cam.getOffset(), { x: 300, y: 300 });
+});
+
+// 输入：dragBy 后 update；期望：manual 模式镜头不动；idleReturnMs=0 时下帧回跟
+test('Camera 拖拽接管与空闲回跟', function () {
+  var cam = fw.Camera.create(1000, 1000, 400, 400, { idleReturnMs: 10000 });
+  cam.snapTo(500, 500);
+  cam.dragBy(-100, 0);   // 向右看 100
+  assert.ok(cam.isManual());
+  assert.strictEqual(cam.getOffset().x, 400);
+  cam.update(16, { x: 500, y: 500 });
+  assert.strictEqual(cam.getOffset().x, 400, 'manual 模式镜头交给玩家');
+
+  var cam2 = fw.Camera.create(1000, 1000, 400, 400, { idleReturnMs: 0 });
+  cam2.snapTo(500, 500);
+  cam2.dragBy(-100, 0);
+  for (var i = 0; i < 100; i++) { cam2.update(16, { x: 500, y: 500 }); }
+  assert.strictEqual(cam2.getOffset().x, 300, '空闲后回跟 idleFocus');
+});
+
+// 输入：4 帧 clip fps=10 loop；期望：100ms 一帧推进、回卷；loop=false 触发 onEnd 停在末帧
+test('SpriteAnimator 切帧/loop/onEnd', function () {
+  var frames = [{ id: 0 }, { id: 1 }, { id: 2 }, { id: 3 }];
+  var sprite = { texture: null, destroyed: false };
+  var an = fw.SpriteAnimator.create(sprite, null);
+  an.add('walk', frames);
+  an.play('walk', { fps: 10 });
+  assert.strictEqual(sprite.texture.id, 0);
+  an.update(100);
+  assert.strictEqual(sprite.texture.id, 1);
+  an.update(300);
+  assert.strictEqual(sprite.texture.id, 0, 'loop 回卷');
+
+  var ended = 0;
+  an.play('walk', { fps: 10, loop: false, onEnd: function () { ended++; } });
+  an.update(1000);
+  assert.strictEqual(ended, 1);
+  assert.strictEqual(sprite.texture.id, 3, '停在末帧');
+  assert.ok(!an.playing());
+});
+
+// 输入：assets 前缀 clip；期望：懒解析 assets.frames(prefix)
+test('SpriteAnimator 前缀解析 assets 帧', function () {
+  var am = fw.AssetManager.create(PIXI);
+  am.addSheet('char', 'char.png', {
+    run_01: { x: 0, y: 0, w: 32, h: 32 },
+    run_02: { x: 32, y: 0, w: 32, h: 32 }
+  });
+  am.loadGroup(['char'], function () {});
+  var sprite = { texture: null, destroyed: false };
+  var an = fw.SpriteAnimator.create(sprite, am);
+  an.play('run_', { fps: 8 });
+  assert.strictEqual(sprite.texture.frame.width, 32);
+  assert.ok(an.playing());
+});
+
+// 输入：256 宽条带按 64 切帧；期望：4 帧、命名 key_01.. 与 frames() 配合
+test('AssetManager addStrip 条带切帧', function () {
+  var am = fw.AssetManager.create(PIXI);
+  am.addStrip('boom', 'boom.png', 64);
+  var result = null;
+  am.loadGroup(['boom'], function (ok, total) { result = [ok, total]; });
+  assert.deepStrictEqual(result, [1, 1]);
+  assert.strictEqual(am.frames('boom_').length, 4);
+  assert.strictEqual(am.texture('boom_01').frame.width, 64);
+  assert.strictEqual(am.texture('boom_04').frame.x, 192);
+});
+
+function fakeAudioFactory(made) {
+  return function () {
+    var ctx = {
+      loop: false, volume: 1, src: '', stopped: false, destroyedCtx: false,
+      play: function () {}, stop: function () { this.stopped = true; },
+      destroy: function () { this.destroyedCtx = true; },
+      onError: function () {}, onEnded: function (fn) { this._onEnded = fn; }
+    };
+    made.push(ctx);
+    return ctx;
+  };
+}
+
+// 输入：playBgm 两曲交叉淡入；期望：新通道升到 bgmVolume、旧通道降 0 销毁、同曲不打断
+test('AudioManager BGM 交叉淡入', function () {
+  var made = [];
+  var au = fw.AudioManager.create({ createCtx: fakeAudioFactory(made), bgmVolume: 0.6 });
+  au.registerAll({ a: 'a.mp3', b: 'b.mp3' });
+  au.playBgm('a', { fade: 400 });
+  assert.strictEqual(made.length, 1);
+  assert.strictEqual(made[0].volume, 0);
+  au.update(400);
+  assert.strictEqual(made[0].volume, 0.6);
+  au.playBgm('a');
+  assert.strictEqual(made.length, 1, '同曲目不打断');
+  au.playBgm('b', { fade: 200 });
+  au.update(100);
+  assert.ok(Math.abs(made[1].volume - 0.3) < 1e-9);
+  assert.ok(Math.abs(made[0].volume - 0.3) < 1e-9);
+  au.update(100);
+  assert.strictEqual(made[1].volume, 0.6);
+  assert.ok(made[0].destroyedCtx, '旧通道已销毁');
+  assert.strictEqual(au.currentBgm(), 'b');
+});
+
+// 输入：SFX 连发 5 次上限 4；期望：最早的被淘汰；静音后不再发声
+test('AudioManager SFX 上限与静音', function () {
+  var made = [];
+  var au = fw.AudioManager.create({ createCtx: fakeAudioFactory(made), sfxLimit: 4 });
+  au.register('hit', 'hit.mp3');
+  for (var i = 0; i < 5; i++) { au.playSfx('hit'); }
+  assert.strictEqual(made.length, 5);
+  assert.ok(made[0].destroyedCtx, '最早的 SFX 被淘汰');
+  au.setMuted(true);
+  au.playSfx('hit');
+  assert.strictEqual(made.length, 5, '静音不再创建');
+});
+
+function mockApp() {
+  var ticks = [];
+  return {
+    PIXI: PIXI,
+    stage: new Container(),
+    stageWidth: 750,
+    stageHeight: 1334,
+    onTick: function (fn) { ticks.push(fn); },
+    tick: function (dt) { ticks.slice().forEach(function (f) { f(dt); }); }
+  };
+}
+
+// 输入：fade 转场包裹切换；期望：变黑到底才执行切换、随后淡入、期间吞触摸
+test('transitions.fade 状态机', function () {
+  var app = mockApp();
+  var t = fw.transitions.fade(app, { duration: 100 });
+  var applied = 0;
+  t(function () { applied++; });
+  assert.strictEqual(t.overlay.eventMode, 'static', '转场期吞触摸');
+  app.tick(50);
+  assert.strictEqual(applied, 0);
+  assert.ok(Math.abs(t.overlay.alpha - 0.5) < 1e-9);
+  app.tick(60);
+  assert.strictEqual(applied, 1, '变黑到底执行切换');
+  app.tick(120);
+  assert.strictEqual(t.overlay.alpha, 0);
+  assert.strictEqual(t.overlay.eventMode, 'none');
+});
+
+// 输入：变黑中再次转场；期望：最新切换意图覆盖，只切一次
+test('transitions.fade 变黑中覆盖意图', function () {
+  var app = mockApp();
+  var t = fw.transitions.fade(app, { duration: 100 });
+  var log = [];
+  t(function () { log.push('a'); });
+  app.tick(50);
+  t(function () { log.push('b'); });
+  app.tick(60);
+  assert.deepStrictEqual(log, ['b']);
+});
+
+// 输入：锚点组合；期望：优先级 center > left > right、拉伸、百分比 w/h
+test('Layout 锚点定位与优先级', function () {
+  var B = { w: 750, h: 1334 };
+  var n1 = { width: 100, height: 50, x: 0, y: 0 };
+  fw.Layout.apply(n1, { right: 20, bottom: 10 }, B);
+  assert.strictEqual(n1.x, 630);
+  assert.strictEqual(n1.y, 1274);
+
+  var n2 = { width: 100, height: 50, x: 0, y: 0 };
+  fw.Layout.apply(n2, { centerX: 0, left: 10, top: 30 }, B);
+  assert.strictEqual(n2.x, 325, 'centerX 优先于 left');
+  assert.strictEqual(n2.y, 30);
+
+  var n3 = { width: 100, height: 50, x: 0, y: 0 };
+  fw.Layout.apply(n3, { left: 20, right: 20 }, B);
+  assert.strictEqual(n3.width, 710, 'left+right 拉伸');
+  assert.strictEqual(n3.x, 20);
+
+  var n4 = { width: 100, height: 50, x: 0, y: 0 };
+  fw.Layout.apply(n4, { w: 0.5, h: 100, centerX: 0, centerY: 0 }, B);
+  assert.strictEqual(n4.width, 375, 'w<=1 视为比例');
+  assert.strictEqual(n4.height, 100);
+});
+
+// 输入：attach 后 bounds 变化 relayout；期望：位置随新 bounds 更新
+test('Layout attach 与 relayout', function () {
+  var n = { width: 100, height: 50, x: 0, y: 0 };
+  fw.Layout.attach(n, { right: 0, bottom: 0 }, { w: 750, h: 1334 });
+  assert.strictEqual(n.x, 650);
+  n.relayout({ w: 400, h: 800 });
+  assert.strictEqual(n.x, 300);
+  assert.strictEqual(n.y, 750);
+});
+
 // ===== 总结 =====
 
 console.log('\n========================');

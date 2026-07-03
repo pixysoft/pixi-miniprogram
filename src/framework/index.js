@@ -8,8 +8,13 @@ var Timer = require('./app/Timer.js');
 var createGameMod = require('./app/createGame.js');
 var SceneManager = require('./scene/SceneManager.js');
 var EventBus = require('./scene/EventBus.js');
+var transitions = require('./scene/transitions.js');
 var AssetManager = require('./assets/AssetManager.js');
 var TextureCache = require('./assets/TextureCache.js');
+var SpriteAnimator = require('./assets/SpriteAnimator.js');
+var AudioManager = require('./audio/AudioManager.js');
+var Camera = require('./world/Camera.js');
+var Layout = require('./ui/Layout.js');
 var Theme = require('./ui/Theme.js');
 var Widget = require('./ui/Widget.js');
 var widgets = require('./ui/widgets.js');
@@ -27,7 +32,7 @@ var Rng = require('./data/Rng.js');
 var DisplayUtil = require('./util/DisplayUtil.js');
 
 module.exports = {
-  version: '2.0.0',
+  version: '3.0.0',
 
   // app
   App: App,
@@ -37,14 +42,23 @@ module.exports = {
   // scene
   SceneManager: SceneManager,
   EventBus: EventBus,
+  transitions: transitions,
 
   // assets
   AssetManager: AssetManager,
   TextureCache: TextureCache,
+  SpriteAnimator: SpriteAnimator,
+
+  // audio
+  AudioManager: AudioManager,
+
+  // world
+  Camera: Camera,
 
   // ui
   Theme: Theme,
   Widget: Widget,
+  Layout: Layout,
   widgets: widgets,
   ScrollView: ScrollView,
   List: List,
