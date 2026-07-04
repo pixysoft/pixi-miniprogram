@@ -1,0 +1,4 @@
+<!--framework 2.0 演示页-->
+<view class="container">
+  <canvas type="webgl" id="gameCanvas" bindtouchstart="touchEvent" bindtouchmove="touchEvent" bindtouchend="touchEvent" bindtouchcancel="touchEvent" style="width:100%;height:100vh;"></canvas>
+</view>

@@ -1,0 +1,105 @@
+/**
+ * framework — Pixi 小程序游戏框架 2.0 聚合导出
+ * 所有模块均为工厂式（显式传入 PIXI/ctx），不污染全局
+ */
+
+var App = require('./app/App.js');
+var Timer = require('./app/Timer.js');
+var createGameMod = require('./app/createGame.js');
+var SceneManager = require('./scene/SceneManager.js');
+var EventBus = require('./scene/EventBus.js');
+var transitions = require('./scene/transitions.js');
+var AssetManager = require('./assets/AssetManager.js');
+var TextureCache = require('./assets/TextureCache.js');
+var SpriteAnimator = require('./assets/SpriteAnimator.js');
+var AudioManager = require('./audio/AudioManager.js');
+var Camera = require('./world/Camera.js');
+var ChunkWorld = require('./world/ChunkWorld.js');
+var ChunkRenderer = require('./world/ChunkRenderer.js');
+var EntityManager = require('./world/EntityManager.js');
+var PinchPan = require('./input/PinchPan.js');
+var Layout = require('./ui/Layout.js');
+var Particle = require('./fx/Particle.js');
+var filters = require('./fx/filters.js');
+var FxLayer = require('./fx/FxLayer.js');
+var CooldownButton = require('./ui/CooldownButton.js');
+var Theme = require('./ui/Theme.js');
+var Widget = require('./ui/Widget.js');
+var widgets = require('./ui/widgets.js');
+var ScrollView = require('./ui/ScrollView.js');
+var List = require('./ui/List.js');
+var TabBar = require('./ui/TabBar.js');
+var PageView = require('./ui/PageView.js');
+var Slider = require('./ui/Slider.js');
+var Modal = require('./ui/Modal.js');
+var Toast = require('./ui/Toast.js');
+var legacy = require('./ui/legacy.js');
+var actions = require('./action/actions.js');
+var easing = require('./action/easing.js');
+var Store = require('./data/Store.js');
+var Gateway = require('./data/Gateway.js');
+var Rng = require('./data/Rng.js');
+var DisplayUtil = require('./util/DisplayUtil.js');
+
+module.exports = {
+  version: '3.0.0',
+
+  // app
+  App: App,
+  Timer: Timer,
+  createGame: createGameMod.createGame,
+
+  // scene
+  SceneManager: SceneManager,
+  EventBus: EventBus,
+  transitions: transitions,
+
+  // assets
+  AssetManager: AssetManager,
+  TextureCache: TextureCache,
+  SpriteAnimator: SpriteAnimator,
+
+  // audio
+  AudioManager: AudioManager,
+
+  // world
+  Camera: Camera,
+  ChunkWorld: ChunkWorld,
+  ChunkRenderer: ChunkRenderer,
+  EntityManager: EntityManager,
+
+  // input
+  PinchPan: PinchPan,
+
+  // fx
+  Particle: Particle,
+  filters: filters,
+  FxLayer: FxLayer,
+
+  // ui
+  Theme: Theme,
+  Widget: Widget,
+  Layout: Layout,
+  widgets: widgets,
+  ScrollView: ScrollView,
+  List: List,
+  Slider: Slider,
+  CooldownButton: CooldownButton,
+  TabBar: TabBar,
+  PageView: PageView,
+  Modal: Modal,
+  Toast: Toast,
+  legacy: legacy,
+
+  // action
+  actions: actions,
+  easing: easing,
+
+  // data
+  Store: Store,
+  Gateway: Gateway,
+  Rng: Rng,
+
+  // util
+  DisplayUtil: DisplayUtil
+};

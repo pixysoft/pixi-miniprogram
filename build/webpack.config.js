@@ -8,12 +8,16 @@ function resolvePixiModule() {
 }
 
 module.exports = {
-  entry: path.join(__dirname, '../src/index'),
+  entry: {
+    'pixi.miniprogram': path.join(__dirname, '../src/index'),
+    // 插件线：独立分包产物，不进默认主包
+    'plugins/spine.player': path.join(__dirname, '../src/plugins/SpinePlayer.js'),
+  },
   target: 'web',
   output: {
     path: path.join(__dirname, '../dist'),
     // path: path.join(__dirname, '../example/libs'),
-    filename: 'pixi.miniprogram.js',
+    filename: '[name].js',
     libraryTarget: 'commonjs',
   },
   module: {
