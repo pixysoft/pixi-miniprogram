@@ -116,7 +116,7 @@
         console.error('[showcase] demo failed', err);
         var box = el('div', 'error-box',
           '<b>演示初始化失败</b><br>' + String(err && err.message || err) +
-          '<br><span style="color:var(--text-dim)">部分演示依赖网络资源（Spine / 位图字体），离线时会失败；其余演示不受影响。</span>');
+          '<br><span style="color:var(--text-dim)">请查看浏览器控制台了解详情；单个演示失败不影响其他演示。</span>');
         stage.appendChild(box);
       });
   }

@@ -307,15 +307,16 @@
     id: 'core-bitmaptext',
     group: 'core',
     title: 'BitmapText 位图字体',
-    menuNote: '.fnt 加载 · xmldom 解析（需联网）',
-    subtitle: '小程序无 DOMParser，适配层内置 xmldom 解析 .fnt XML；fnt/json 必须走网络（小程序不能 require 本地二进制）',
+    menuNote: '.fnt 加载 · xmldom 解析',
+    subtitle: '小程序无 DOMParser，适配层内置 xmldom 解析 .fnt XML；小程序端 fnt/json 必须走网络（不能 require 本地二进制），本站已将资源镜像到本地',
     mode: 'pixi',
     width: 480, height: 400,
     desc:
       '<p>加载链路完整穿过适配层：<code>PIXI.Assets</code> → 内置 fetch 桥（wx.request）→ xmldom 解析 fnt → 纹理页图片经 <code>canvas.createImage()</code> 加载。</p>' +
-      '<p class="warn">此演示从 raw.githubusercontent.com 加载 blog.fnt（与官方 example 相同资源），离线或网络受限时会失败，不影响其他演示。</p>',
+      '<p>资源为官方 example 同款 blog.fnt（含纹理页 blog_0.png），已镜像到 <code>assets/remote/</code>，演示不依赖外网。小程序真机端仍需放到网络服务器加载。</p>',
     code:
-      "PIXI.Assets.add('blog', 'https://raw.githubusercontent.com/skyfish-qc/imgres/master/blog.fnt')\n" +
+      "// 小程序端必须走网络服务器；本站演示用本地镜像\n" +
+      "PIXI.Assets.add('blog', 'assets/remote/blog.fnt')\n" +
       "PIXI.Assets.load(['blog']).then(() => {\n" +
       "  const btext = new PIXI.BitmapText('score:1234', {\n" +
       "    fontName: 'blog', fontSize: 60, tint: 0xffff00\n" +
@@ -337,7 +338,7 @@
 
       var score = 1234;
       var btext = null;
-      PIXI.Assets.add('blog', 'https://raw.githubusercontent.com/skyfish-qc/imgres/master/blog.fnt');
+      PIXI.Assets.add('blog', 'assets/remote/blog.fnt');
       PIXI.Assets.load(['blog']).then(function () {
         loading.text = 'BitmapText（GPU 纹理拼字，改字零光栅化成本）';
         loading.style.fontSize = 24;
@@ -348,7 +349,7 @@
         b2.x = 40; b2.y = 240;
         stage.addChild(b2);
       }).catch(function (e) {
-        loading.text = '网络资源加载失败（需联网）\n' + e;
+        loading.text = '字体资源加载失败\n' + e;
         loading.style.fill = 0xff8888;
       });
 

@@ -9,21 +9,20 @@
     id: 'core-spine',
     group: 'core',
     title: 'Spine 骨骼动画',
-    menuNote: 'pixi-spine 注入模式（需联网）',
+    menuNote: 'pixi-spine 注入模式',
     subtitle: 'PIXI 不在全局，第三方库需套一层 install(PIXI) 注入 — 这是本适配版的库生态约定',
     mode: 'pixi',
     width: 480, height: 640,
     desc:
       '<p>2022.04.11 提交加入 Spine 3.8 支持。因为适配版 PIXI 不挂到全局，' +
       'pixi-spine 被改造成 <code>module.exports = installSpine</code>，用时 <code>installSpine(PIXI)</code> 注入。</p>' +
-      '<ul><li>骨骼数据（spineboy-pro.json + atlas + 纹理页）从 raw.githubusercontent 加载，与官方 example 相同</li>' +
-      '<li>按钮可切换 hoverboard / walk / run / jump 动画，验证 <code>state.setAnimation</code></li>' +
-      '<li class="warn">离线时此演示会失败，不影响其他演示</li></ul>',
+      '<ul><li>骨骼数据为官方 example 同款 spineboy-pro（json + atlas + 纹理页），已镜像到 <code>assets/remote/</code>，不依赖外网</li>' +
+      '<li>按钮可切换 hoverboard / walk / run / jump 动画，验证 <code>state.setAnimation</code></li></ul>',
     code:
       "var installSpine = require('./libs/pixi-spine')\n" +
       "installSpine(PIXI)   // 注入，之后 PIXI.spine.* 可用\n" +
       "\n" +
-      "PIXI.Assets.add('spineboypro', 'https://.../spineboy-pro.json')\n" +
+      "PIXI.Assets.add('spineboypro', 'assets/remote/spineboy-pro.json')\n" +
       "PIXI.Assets.load(['spineboypro']).then(res => {\n" +
       "  const boy = new PIXI.spine.Spine(res.spineboypro.spineData)\n" +
       "  boy.state.setAnimation(0, 'hoverboard', true)\n" +
@@ -45,7 +44,7 @@
         stage.addChild(status);
 
         var boy = null;
-        PIXI.Assets.add('spineboypro', 'https://raw.githubusercontent.com/skyfish-qc/imgres/master/spineboy-pro.json');
+        PIXI.Assets.add('spineboypro', 'assets/remote/spineboy-pro.json');
         PIXI.Assets.load(['spineboypro']).then(function (res) {
           boy = new PIXI.spine.Spine(res.spineboypro.spineData);
           boy.x = W / 2;
@@ -63,7 +62,7 @@
             });
           });
         }).catch(function (e) {
-          status.text = '网络资源加载失败（需联网）\n' + e;
+          status.text = '骨骼资源加载失败\n' + e;
           status.style.fill = 0xff8888;
         });
 

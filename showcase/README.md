@@ -53,13 +53,15 @@ python3 -m http.server 8080
 
 ## 素材说明
 
-`assets/uw/` 下的像素图集（16px 瓦片 / 32px 船与角色帧）来自
-JohanLi/uncharted-waters-2（MIT）像素占位素材，仅演示用；其余视觉全部为
-`tc.*` 程序化纹理（方块 / 圆角面板 / 圆环）。
+- `assets/uw/`：像素图集（16px 瓦片 / 32px 船与角色帧），来自
+  JohanLi/uncharted-waters-2（MIT）像素占位素材，仅演示用；
+- `assets/remote/`：原官方 example 的远程资源本地镜像
+  （blog.fnt + blog_0.png 位图字体、spineboy-pro.json/.atlas/.png 骨骼数据），
+  演示站完全离线可用，不依赖外网；
+- 其余视觉全部为 `tc.*` 程序化纹理（方块 / 圆角面板 / 圆环），
+  音频为运行时合成 WAV（data URI）。
 
 ## 已知限制
 
-- Spine / BitmapText 两个演示从 raw.githubusercontent.com 加载资源，离线时该两项失败，
-  页面会给出提示，不影响其他演示；
 - Live2D 运行时体量大且授权受限，只做注入模式的文档化演示（见「扩展库生态注入模式」）；
 - 双指手势用滚轮模拟；真机小程序端请参考 `example/` 目录。
