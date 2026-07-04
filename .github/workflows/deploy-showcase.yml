@@ -1,0 +1,33 @@
+name: Deploy Showcase
+
+on:
+  push:
+    branches:
+      - feature/fable5_showcase
+      - master
+    paths:
+      - 'showcase/**'
+      - '.github/workflows/deploy-showcase.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: showcase-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy showcase to gh-pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: showcase
+          branch: gh-pages
+          clean: true
+          commit-message: 'deploy: showcase static site'
