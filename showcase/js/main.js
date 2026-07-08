@@ -163,6 +163,12 @@
       '<li><b>P3</b>：SpinePlayer 分包、richLabel、app.snapshot 截图</li>' +
       '</ul></div>' +
 
+      '<div class="card"><h3><span class="dot" style="background:var(--green)"></span>framework 3.1 — 收编现网游戏（新增）</h3><ul>' +
+      '<li><b>P0</b>：PageShell 页面壳模板（canvas 查询/生命周期/触摸转发）、SceneManager 弹层栈（pushLayer 冻结下层 update）、TextureFactory 程序化纹理全家桶</li>' +
+      '<li><b>P1</b>：Joystick 虚拟摇杆（浮动/固定 + dir4/dir8）、Camera2D 缩放相机（zoomAt/toTile/visibleTiles）、' +
+      'TileMap 字符图例地图 + PathFinder 八方向 A*、Perf 性能探针、NumFont BMFont 数字（Text 回退链）</li>' +
+      '</ul></div>' +
+
       '</div>' +
 
       '<div class="hint">👈 点击左侧菜单任意条目开始演示。每个演示页包含 <b>可交互的实时渲染</b>、<b>使用说明</b> 和 <b>代码片段</b>。' +

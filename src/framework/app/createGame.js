@@ -18,10 +18,18 @@
  *   game.particle(cfg) / game.fxLayer(opts) — 演出层（自动接入主循环）
  *   game.filters — Filter 预设（night/hurt/glow/custom）
  *   ui.cooldownButton(opts) / ui.tabBar(opts) / ui.pageView(opts)
+ *
+ * 3.1 追加：
+ *   game.tf — TextureFactory 游戏级程序化纹理（与 tc 共享缓存）
+ *   game.joystick(surface, opts) — 虚拟摇杆
+ *   game.numFont(opts) — BMFont 艺术数字（Text 回退链）
+ *   game.perf(opts) — 性能探针
+ *   scenes.pushLayer/popLayer — 弹层栈（冻结下层 update；layerRoot 位于 toast 之下）
  */
 
 var App = require('./App.js');
 var TextureCache = require('../assets/TextureCache.js');
+var TextureFactory = require('../assets/TextureFactory.js');
 var AssetManager = require('../assets/AssetManager.js');
 var Theme = require('../ui/Theme.js');
 var widgetsMod = require('../ui/widgets.js');
@@ -41,21 +49,27 @@ var FxLayer = require('../fx/FxLayer.js');
 var CooldownButton = require('../ui/CooldownButton.js');
 var TabBar = require('../ui/TabBar.js');
 var PageView = require('../ui/PageView.js');
+var NumFont = require('../ui/NumFont.js');
+var Joystick = require('../input/Joystick.js');
+var Perf = require('../util/Perf.js');
 
 function createGame(PIXI, canvas, opts) {
   opts = opts || {};
   var app = App.create(PIXI, canvas, opts);
   var tc = TextureCache.create(PIXI, app.renderer);
+  var tf = TextureFactory.create(PIXI, app.renderer, tc);
   var assets = AssetManager.create(PIXI);
   var theme = Theme.create();
   if (opts.theme) { theme.set(opts.theme); }
 
-  var uiCtx = { PIXI: PIXI, tc: tc, assets: assets, theme: theme };
+  var uiCtx = { PIXI: PIXI, tc: tc, tf: tf, assets: assets, theme: theme };
   var w = widgetsMod.create(uiCtx);
 
   var sceneRoot = new PIXI.Container();
   app.stage.addChild(sceneRoot);
-  var scenes = SceneManager.create(sceneRoot);
+  var layerRoot = new PIXI.Container();   // 弹层根：场景之上、toast 之下
+  app.stage.addChild(layerRoot);
+  var scenes = SceneManager.create(sceneRoot, layerRoot);
   var bus = EventBus.create();
 
   var toast = Toast.create(uiCtx, w, { stageW: app.stageWidth });
@@ -108,6 +122,7 @@ function createGame(PIXI, canvas, opts) {
     W: app.stageWidth,
     H: app.stageHeight,
     tc: tc,
+    tf: tf,
     assets: assets,
     theme: theme,
     scenes: scenes,
@@ -124,6 +139,15 @@ function createGame(PIXI, canvas, opts) {
 
     /** 战斗反馈层：飘字/碎块/圆环 */
     fxLayer: function (o) { return track(FxLayer.create(uiCtx, o)); },
+
+    /** 虚拟摇杆（surface = 覆盖可玩区的交互层；container 需调用方挂树） */
+    joystick: function (surface, o) { return Joystick.create(uiCtx, surface, o); },
+
+    /** BMFont 艺术数字（未就绪回退 PIXI.Text） */
+    numFont: function (o) { return NumFont.create(uiCtx, o); },
+
+    /** 性能探针 */
+    perf: function (o) { return Perf.create(o); },
 
     filters: filtersMod.create(PIXI),
 

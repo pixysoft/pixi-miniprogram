@@ -93,7 +93,8 @@ Object.defineProperty(Text.prototype, 'height', {
 function Graphics() { Container.call(this); }
 Graphics.prototype = Object.create(Container.prototype);
 ['beginFill', 'endFill', 'lineStyle', 'drawRoundedRect', 'drawRect', 'drawCircle',
- 'drawEllipse', 'drawPolygon', 'moveTo', 'lineTo', 'quadraticCurveTo', 'arc', 'clear'
+ 'drawEllipse', 'drawPolygon', 'moveTo', 'lineTo', 'quadraticCurveTo', 'arc', 'clear',
+ 'closePath'
 ].forEach(function (m) { Graphics.prototype[m] = function () { return this; }; });
 
 function Rectangle(x, y, w, h) { this.x = x; this.y = y; this.width = w; this.height = h; }
@@ -1267,6 +1268,295 @@ test('AssetManager loadBitmapFont 降级', function () {
   var ok = null;
   am.loadBitmapFont('gold', '<font/>', 'gold.png', function (r) { ok = r; });
   assert.strictEqual(ok, false);
+});
+
+// ===== 11. 3.1 新增（Page 壳 / 弹层栈 / TextureFactory / 摇杆 / Camera2D / TileMap / 寻路 / Perf / NumFont） =====
+
+console.log('\n[11] 3.1 新增');
+
+// 输入：mock wx 查询 canvas → onLoad / onTouch / onHide / onUnload；期望：生命周期全链路正确
+test('PageShell 生命周期与触摸转发', function () {
+  var calls = [];
+  var canvasNode = { width: 0, height: 0 };
+  var mockWx = {
+    createSelectorQuery: function () {
+      return {
+        select: function () {
+          return { boundingClientRect: function () {}, node: function () {} };
+        },
+        exec: function (cb) {
+          cb([{ width: 375, height: 667 }, { node: canvasNode }]);
+        }
+      };
+    }
+  };
+  var game = {
+    dispatchTouch: function (e) { calls.push('touch:' + e.type); },
+    onHide: function () { calls.push('hide'); },
+    onShow: function () { calls.push('show'); },
+    destroy: function () { calls.push('destroy'); }
+  };
+  var page = fw.PageShell.create({
+    wx: mockWx,
+    createGame: function (canvas, w, h) {
+      calls.push('create:' + w + 'x' + h);
+      assert.strictEqual(canvas, canvasNode);
+      assert.strictEqual(canvas.width, 375);   // 壳自动设置 canvas 尺寸
+      return game;
+    },
+    share: { title: 't', path: '/p' }
+  });
+  assert.strictEqual(page.data.loading, true);
+  page.onLoad();
+  assert.strictEqual(page.getGame(), game);
+  page.onTouch({ type: 'touchstart' });
+  page.onHide();
+  page.onShow();
+  page.onUnload();
+  assert.strictEqual(page.getGame(), null);
+  assert.deepStrictEqual(calls, ['create:375x667', 'touch:touchstart', 'hide', 'show', 'destroy']);
+  assert.deepStrictEqual(page.onShareAppMessage(), { title: 't', path: '/p' });
+});
+
+// 输入：场景 + 弹层压栈；期望：弹层冻结下层 update（可见性保留），popLayer 触发 resume
+test('SceneManager pushLayer 冻结下层 / popLayer resume', function () {
+  var root = new Container();
+  var layerRoot = new Container();
+  var sm = fw.SceneManager.create(root, layerRoot);
+
+  var battle = makeScene();
+  battle.updates = 0;
+  battle.update = function () { battle.updates++; };
+  battle.resumed = 0;
+  battle.resume = function () { battle.resumed++; };
+  var pause = makeScene();
+  pause.updates = 0;
+  pause.update = function () { pause.updates++; };
+
+  sm.register('battle', function () { return battle; });
+  sm.register('pause', function () { return pause; });
+
+  sm.replace('battle');
+  sm.update(16);
+  assert.strictEqual(battle.updates, 1);
+
+  sm.pushLayer('pause');
+  assert.strictEqual(sm.hasLayer(), true);
+  assert.strictEqual(sm.currentLayer(), 'pause');
+  assert.strictEqual(battle.container.visible, true);       // 下层保持可见
+  assert.strictEqual(pause.container.parent, layerRoot);    // 弹层挂 layerRoot
+  sm.update(16);
+  assert.strictEqual(battle.updates, 1);                    // 冻结
+  assert.strictEqual(pause.updates, 1);
+
+  sm.popLayer();
+  assert.strictEqual(sm.hasLayer(), false);
+  assert.strictEqual(battle.resumed, 1);
+  sm.update(16);
+  assert.strictEqual(battle.updates, 2);
+
+  // replace 清弹层
+  sm.pushLayer('pause');
+  sm.replace('battle');
+  assert.strictEqual(sm.hasLayer(), false);
+});
+
+// 输入：同参数取形状两次；期望：缓存命中同一纹理；tc 共享缓存
+test('TextureFactory 形状缓存与 tc 共享', function () {
+  var tc = fw.TextureCache.create(PIXI, mockRenderer);
+  var tf = fw.TextureFactory.create(PIXI, mockRenderer, tc);
+  var a = tf.circle(0xff0000, 10);
+  var b = tf.circle(0xff0000, 10);
+  assert.strictEqual(a, b);
+  assert.ok(tf.roundRect(0x333333, 100, 40, 8));
+  assert.ok(tf.diamond(0x00ff00, 12));
+  assert.ok(tf.triangle(0xffff00, 20));
+  assert.ok(tf.star(0xffd23e, 28, 0.5));
+  assert.ok(tf.tile(0x3e7c4f, 32, 0.1));
+  assert.ok(tf.isoTile(0x8888aa, 64, 32));
+  assert.ok(tf.joystick('base', 240));
+  assert.ok(tf.joystick('knob', 80));
+  assert.strictEqual(tf.panel, tc.panel);   // 兼容转发同一缓存
+});
+
+// 输入：pointerdown → move 超出半径 → up；期望：方向/力度/四八方向量化正确，松手隐藏
+test('Joystick 浮动摇杆方向输出', function () {
+  var tc = fw.TextureCache.create(PIXI, mockRenderer);
+  var tf = fw.TextureFactory.create(PIXI, mockRenderer, tc);
+  var surface = new Container();
+  var joy = fw.Joystick.create({ PIXI: PIXI, tf: tf }, surface, { radius: 100 });
+
+  assert.strictEqual(joy.getDir(), null);
+  surface.trigger('pointerdown', { pointerId: 1, data: { global: { x: 200, y: 300 } } });
+  assert.strictEqual(joy.active(), true);
+  assert.strictEqual(joy.container.visible, true);
+  assert.strictEqual(joy.container.x, 200);            // 触摸点即中心
+
+  // 向右拖 150px（超出半径 → strength 钳到 1）
+  surface.trigger('pointermove', { pointerId: 1, data: { global: { x: 350, y: 300 } } });
+  var d = joy.getDir();
+  assert.ok(Math.abs(d.x - 1) < 1e-9 && Math.abs(d.y) < 1e-9);
+  assert.strictEqual(d.strength, 1);
+  assert.strictEqual(joy.dir4(), 2);                   // 右
+  assert.strictEqual(joy.dir8(), 0);                   // E
+
+  // 向下拖
+  surface.trigger('pointermove', { pointerId: 1, data: { global: { x: 200, y: 380 } } });
+  assert.strictEqual(joy.dir4(), 0);                   // 下
+  assert.strictEqual(joy.dir8(), 6);                   // 屏幕向下 = 数学角 -90°
+
+  // 其他指针的 move 不干扰
+  surface.trigger('pointermove', { pointerId: 2, data: { global: { x: 0, y: 0 } } });
+  assert.strictEqual(joy.dir4(), 0);
+
+  surface.trigger('pointerup', { pointerId: 1 });
+  assert.strictEqual(joy.getDir(), null);
+  assert.strictEqual(joy.container.visible, false);
+});
+
+// 输入：缩放/平移/坐标换算；期望：钳制生效、toTile 与 tileToScreen 互逆
+test('Camera2D 缩放钳制与格坐标换算', function () {
+  var world = new Container();
+  var cam = fw.Camera2D.create(world, { x: 0, y: 0, w: 200, h: 200 }, 800, 800,
+    { minScale: 0.5, maxScale: 2, tileSize: 40 });
+
+  cam.zoomAt(100, 100, 100);                       // 超上限 → 钳到 2
+  assert.strictEqual(cam.scale(), 2);
+  cam.zoomAt(0.01, 100, 100);                      // 超下限 → 钳到 0.5
+  assert.strictEqual(cam.scale(), 0.5);
+
+  cam.setScale(1);
+  cam.focusTile(5, 5);                             // 格 (5,5) 中心 = 世界 (220, 220)
+  var t = cam.toTile(100, 100);                    // 视口中心应回到该格
+  assert.ok(Math.abs(t.x - 5) < 1e-6 && Math.abs(t.y - 5) < 1e-6);
+  var s = cam.tileToScreen(5, 5);
+  assert.ok(Math.abs(s.x - 100) < 1e-6 && Math.abs(s.y - 100) < 1e-6);
+
+  cam.pan(99999, 99999);                           // 平移钳制：不出界
+  var v = cam.visibleWorld();
+  assert.strictEqual(v.x0, 0);
+  assert.strictEqual(v.y0, 0);
+  var vt = cam.visibleTiles();
+  assert.strictEqual(vt.x0, 0);
+});
+
+// 输入：legend 字符地图；期望：分层构建、碰撞表、over 补地、setBlocked 动态占位
+test('TileMap 图例构建与碰撞', function () {
+  var texCalls = [];
+  var map = fw.TileMap.create({
+    PIXI: PIXI,
+    textureFor: function (key) {
+      texCalls.push(key);
+      if (key === 'missing') { return null; }
+      return { width: 8, height: 8 };
+    }
+  }, {
+    legend: {
+      '.': { tile: 'grass', walk: true },
+      '#': { tile: 'wall', walk: false, over: true, under: 'grass' },
+      '~': { tile: 'missing', walk: false }
+    },
+    ground: ['.#.', '.~.']
+  }, { tileSize: 32 });
+
+  assert.strictEqual(map.width, 3);
+  assert.strictEqual(map.height, 2);
+  assert.strictEqual(map.pixelWidth, 96);
+  assert.strictEqual(map.walkable(0, 0), true);
+  assert.strictEqual(map.walkable(1, 0), false);           // 墙
+  assert.strictEqual(map.walkable(5, 0), false);           // 越界
+  assert.strictEqual(map.overlayLayer.children.length, 1); // over 墙进覆盖层
+  // over 墙脚下补地面：ground 层 = 4 个可绘制格 + 1 补地（missing 跳过）
+  assert.strictEqual(map.groundLayer.children.length, 5);
+
+  map.setBlocked(0, 0, true);                              // NPC 占位
+  assert.strictEqual(map.walkable(0, 0), false);
+  map.setBlocked(0, 0, false);
+  assert.strictEqual(map.walkable(0, 0), true);            // 恢复图例值
+  assert.strictEqual(map.tileAt(1, 0).over, true);
+});
+
+// 输入：带墙网格寻路；期望：绕障可达、目标不可走找最近格、封死返回 null
+test('PathFinder A* 绕障与最近可走格', function () {
+  // 5×5，x=2 列除 (2,4) 外全是墙
+  function canWalk(x, y) {
+    if (x < 0 || y < 0 || x > 4 || y > 4) { return false; }
+    if (x === 2 && y < 4) { return false; }
+    return true;
+  }
+  var path = fw.PathFinder.find(canWalk, 0, 0, 4, 0);
+  assert.ok(path && path.length > 0);
+  var end = path[path.length - 1];
+  assert.strictEqual(end.x, 4);
+  assert.strictEqual(end.y, 0);
+  for (var i = 0; i < path.length; i++) {                  // 每步都可走
+    assert.ok(canWalk(path[i].x, path[i].y));
+  }
+  var ds = fw.PathFinder.dirs(path, 0, 0);
+  assert.strictEqual(ds.length, path.length);
+
+  // 目标是墙 (2,0) → 最近可走格
+  var near = fw.PathFinder.find(canWalk, 0, 0, 2, 0);
+  assert.ok(near && near.length > 0);
+  var ne = near[near.length - 1];
+  assert.ok(canWalk(ne.x, ne.y));
+
+  // 全封死 → null
+  assert.strictEqual(fw.PathFinder.find(function () { return false; }, 0, 0, 3, 3), null);
+  // 起点即终点 → []
+  assert.deepStrictEqual(fw.PathFinder.find(canWalk, 1, 1, 1, 1), []);
+});
+
+// 输入：窗口 100ms、两帧后越窗；期望：onReport 汇总帧数/分段/计数正确
+test('Perf 窗口汇总与分段统计', function () {
+  var report = null;
+  var perf = fw.Perf.create({ windowMs: 100, slowMs: 50, log: false, onReport: function (r) { report = r; } });
+  perf.add('battle', 4);
+  perf.setCounts({ mob: 12 });
+  perf.frame(1000, 16);
+  perf.add('battle', 8);
+  perf.frame(1100, 60);                                    // 越窗 + 慢帧
+  assert.ok(report);
+  assert.strictEqual(report.frames, 2);
+  assert.strictEqual(report.slow, 1);
+  assert.strictEqual(report.maxMs, 60);
+  assert.strictEqual(report.segments.battle.max, 8);
+  assert.ok(Math.abs(report.segments.battle.avg - 6) < 1e-9);
+  assert.strictEqual(report.counts.mob, 12);
+  assert.strictEqual(perf.last(), report);
+});
+
+// 输入：未就绪 setText → 回退 Text；注入 fnt 后 setText → 图字拼接；期望：回退链无缝切换
+test('NumFont 回退链与 BMFont 解析', function () {
+  var nf = fw.NumFont.create({ PIXI: PIXI });
+  assert.strictEqual(nf.ready(), false);
+
+  var node = nf.make();
+  node.setText('123');                                     // 未就绪 → PIXI.Text 回退
+  assert.strictEqual(node.children.length, 1);
+  assert.strictEqual(node.children[0].text, '123');
+
+  var fnt =
+    'common lineHeight=40 base=32\n' +
+    'char id=49 x=0 y=0 width=10 height=20 xoffset=0 yoffset=0 xadvance=12\n' +
+    'char id=50 x=10 y=0 width=10 height=20 xoffset=0 yoffset=0 xadvance=12\n' +
+    'char id=51 x=20 y=0 width=10 height=20 xoffset=0 yoffset=0 xadvance=12\n';
+  nf.setFnt(fnt, new Texture({ width: 64, height: 64 }));
+  assert.strictEqual(nf.ready(), true);
+  assert.strictEqual(nf.canRender('123'), true);
+  assert.strictEqual(nf.canRender('1a'), false);
+
+  node.setText('12', 0xff0000, 2);                         // 就绪 → 图字
+  var visSprites = node.children.filter(function (c) { return c.visible && c.texture; });
+  assert.strictEqual(visSprites.length, 2);
+  assert.strictEqual(visSprites[0].tint, 0xff0000);
+  assert.strictEqual(node.scale.x, 2);
+  assert.strictEqual(node.children[0].visible, false);     // Text 回退已隐藏
+
+  // XML 单行格式兼容
+  var parsed = fw.NumFont.parseFnt('<common lineHeight="64"/>\n<char id="48" x="1" y="2" width="9" height="12" xadvance="10"/>');
+  assert.strictEqual(parsed.lineHeight, 64);
+  assert.ok(parsed.chars['0']);
 });
 
 // ===== 总结 =====
