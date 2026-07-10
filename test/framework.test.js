@@ -1559,6 +1559,75 @@ test('NumFont 回退链与 BMFont 解析', function () {
   assert.ok(parsed.chars['0']);
 });
 
+// ===== 11. 内核 patch：Graphics 越界洞（真 dist 产物几何验证） =====
+// 输入：全屏矩形 + beginHole 圆（半径超出外形）；期望：洞心无填充三角形、
+// 外形四角填充完整——earcut 越界洞退化（实心洞/丢填充）由 clamp patch 修复。
+// 现网案例：传奇小程序石墓七层永暗光照把玩家罩黑（2026-07）。
+
+test('内核 patch：beginHole 越界洞 clamp（dist 产物）', function () {
+  var stubCanvas = {
+    getContext: function () {
+      return { fillRect: function () {}, createImageData: function () { return { data: [] }; },
+        getImageData: function () { return { data: [] }; }, canvas: { width: 1, height: 1 } };
+    },
+    width: 1, height: 1, style: {}, addEventListener: function () {}
+  };
+  var savedWx = global.wx;
+  global.wx = {
+    createOffscreenCanvas: function () { return stubCanvas; },
+    getSystemInfoSync: function () { return { windowWidth: 375, windowHeight: 667, pixelRatio: 2, platform: 'devtools' }; },
+    createImage: function () { return {}; },
+    getPerformance: function () { return { now: Date.now }; }
+  };
+  try {
+    var lib = require('../dist/pixi.miniprogram.js');
+    var RealPIXI = lib.createPIXI(stubCanvas, 750);
+
+    function hit(g, px, py) {
+      var pts = g.geometry.points, idx = g.geometry.indices;
+      for (var i = 0; i < idx.length; i += 3) {
+        var ax = pts[idx[i] * 2], ay = pts[idx[i] * 2 + 1];
+        var bx = pts[idx[i + 1] * 2], by = pts[idx[i + 1] * 2 + 1];
+        var cx = pts[idx[i + 2] * 2], cy = pts[idx[i + 2] * 2 + 1];
+        var s1 = (bx - ax) * (py - ay) - (by - ay) * (px - ax);
+        var s2 = (cx - bx) * (py - by) - (cy - by) * (px - bx);
+        var s3 = (ax - cx) * (py - cy) - (ay - cy) * (px - cx);
+        if ((s1 >= 0 && s2 >= 0 && s3 >= 0) || (s1 <= 0 && s2 <= 0 && s3 <= 0)) { return true; }
+      }
+      return false;
+    }
+
+    // 越界洞（石墓光照参数）：R=380/640 均超 750 宽半屏
+    [200, 380, 640].forEach(function (R) {
+      var g = new RealPIXI.Graphics();
+      g.beginFill(0x000000, 0.82);
+      g.drawRect(0, 0, 750, 1600);
+      g.beginHole();
+      g.drawCircle(375, 800, R);
+      g.endHole();
+      g.endFill();
+      g.geometry.updateBatches();
+      assert.strictEqual(hit(g, 375, 800), false, 'R=' + R + ' 洞心不应被填充');
+      assert.strictEqual(hit(g, 10, 10), true, 'R=' + R + ' 屏角应有填充');
+      assert.ok(g.geometry.indices.length / 3 > 10, 'R=' + R + ' 三角形不应退化（earcut 越界丢填充）');
+    });
+
+    // 界内环回归：patch 不改变合法洞行为
+    var ring = new RealPIXI.Graphics();
+    ring.beginFill(0, 0.5);
+    ring.drawCircle(375, 800, 340);
+    ring.beginHole();
+    ring.drawCircle(375, 800, 300);
+    ring.endHole();
+    ring.endFill();
+    ring.geometry.updateBatches();
+    assert.strictEqual(hit(ring, 375, 800), false, '界内环心应为空');
+    assert.strictEqual(hit(ring, 375, 800 - 320), true, '界内环带应有填充');
+  } finally {
+    global.wx = savedWx;
+  }
+});
+
 // ===== 总结 =====
 
 console.log('\n========================');

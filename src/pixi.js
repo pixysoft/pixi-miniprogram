@@ -17686,6 +17686,23 @@ Please use Assets.add({ alias, src, data, format, loadParser }) instead.`), asse
       if (points.length >= 6) {
         fixOrientation(points, !1);
         const holeArray = [];
+        // [pixi-miniprogram patch] earcut 要求洞完全在外轮廓内：越界洞（如全屏遮罩
+        // 中心光圈半径超出屏边）会让 earcut 退化（三角形丢失、洞被实心填充）。
+        // 防御：洞点按外轮廓包围盒收缩 clamp——出界弧段贴边截断，语义等于
+        // "洞超出外形的部分本就无效"，输入恢复合法，洞在界内时零改动。
+        let obMinX = 1 / 0, obMinY = 1 / 0, obMaxX = -1 / 0, obMaxY = -1 / 0;
+        for (let i2 = 0; i2 < points.length; i2 += 2) {
+          obMinX = Math.min(obMinX, points[i2]), obMaxX = Math.max(obMaxX, points[i2]);
+          obMinY = Math.min(obMinY, points[i2 + 1]), obMaxY = Math.max(obMaxY, points[i2 + 1]);
+        }
+        const CLAMP_EPS = 1e-2;
+        for (let i2 = 0; i2 < holes.length; i2++) {
+          const hp = holes[i2].points;
+          for (let j2 = 0; j2 < hp.length; j2 += 2) {
+            hp[j2] = Math.min(obMaxX - CLAMP_EPS, Math.max(obMinX + CLAMP_EPS, hp[j2]));
+            hp[j2 + 1] = Math.min(obMaxY - CLAMP_EPS, Math.max(obMinY + CLAMP_EPS, hp[j2 + 1]));
+          }
+        }
         for (let i2 = 0; i2 < holes.length; i2++) {
           const hole = holes[i2];
           fixOrientation(hole.points, !0), holeArray.push(points.length / 2), points = points.concat(hole.points);
